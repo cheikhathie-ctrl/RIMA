@@ -20,48 +20,27 @@ class HomeScreen extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: RimaColors.primary,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'R',
-                        style: TextStyle(
-                          color: RimaColors.gold,
-                          fontSize: 30,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+                  Expanded(
+                    child: Image.asset(
+                      'assets/images/rima_logo.png',
+                      height: 72,
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.contain,
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'RIMA',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
-                          color: RimaColors.primary,
-                        ),
-                      ),
-                      Text(
-                        'Mauritania',
-                        style: RimaTextStyles.subtitle,
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
+                  const SizedBox(width: 16),
                   IconButton(
                     onPressed: () {},
                     icon: const Icon(
                       Icons.notifications_none_rounded,
+                      color: RimaColors.primary,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.person_outline_rounded,
+                      color: RimaColors.primary,
                     ),
                   ),
                 ],
@@ -82,9 +61,7 @@ class HomeScreen extends StatelessWidget {
                 hintText: 'Search destination, restaurant or service',
               ),
               const SizedBox(height: 30),
-              const RimaSectionTitle(
-                title: 'Services',
-              ),
+              const RimaSectionTitle(title: 'Services'),
               const SizedBox(height: 14),
               RimaServiceCard(
                 icon: Icons.local_taxi_rounded,

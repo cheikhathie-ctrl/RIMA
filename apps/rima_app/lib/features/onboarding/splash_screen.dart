@@ -12,22 +12,16 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-
   @override
   void initState() {
     super.initState();
 
-    Timer(
-      const Duration(seconds: 3),
-      () {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-           builder: (_) => const WelcomeScreen(),
-          ),
-        );
-      },
-    );
+    Timer(const Duration(seconds: 3), () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      );
+    });
   }
 
   @override
@@ -38,26 +32,11 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: const Center(
-                child: Text(
-                  "R",
-                  style: TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.bold,
-                    color: RimaColors.primary,
-                  ),
-                ),
-              ),
+            Image.asset(
+              'assets/images/rima_brand.png',
+              width: 220,
+              fit: BoxFit.contain,
             ),
-
             SizedBox(height: 35),
 
             Text(
@@ -74,17 +53,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
             Text(
               "Mauritania",
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 20,
-              ),
+              style: TextStyle(color: Colors.white70, fontSize: 20),
             ),
 
             SizedBox(height: 70),
 
-            CircularProgressIndicator(
-              color: RimaColors.gold,
-            ),
+            CircularProgressIndicator(color: RimaColors.gold),
           ],
         ),
       ),
