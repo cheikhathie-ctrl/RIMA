@@ -1,5 +1,5 @@
+import '../rides/ride_booking_screen.dart';
 import 'package:flutter/material.dart';
-
 import '../../app/theme/colors.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -16,11 +16,9 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 520,
-            ),
+            constraints: const BoxConstraints(maxWidth: 520),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20,100 ),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 100),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -40,17 +38,11 @@ class HomeScreen extends StatelessWidget {
 
                       const SizedBox(width: 12),
 
-                      _circleButton(
-                        Icons.notifications_none_rounded,
-                        () {},
-                      ),
+                      _circleButton(Icons.notifications_none_rounded, () {}),
 
                       const SizedBox(width: 8),
 
-                      _circleButton(
-                        Icons.person_outline_rounded,
-                        () {},
-                      ),
+                      _circleButton(Icons.person_outline_rounded, () {}),
                     ],
                   ),
 
@@ -80,10 +72,7 @@ class HomeScreen extends StatelessWidget {
                         SizedBox(height: 6),
                         Text(
                           'How can we help you today?',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.black54,
-                          ),
+                          style: TextStyle(fontSize: 16, color: Colors.black54),
                         ),
                       ],
                     ),
@@ -99,9 +88,7 @@ class HomeScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: Colors.black12,
-                      ),
+                      border: Border.all(color: Colors.black12),
                     ),
                     child: const TextField(
                       decoration: InputDecoration(
@@ -111,9 +98,7 @@ class HomeScreen extends StatelessWidget {
                           color: RimaColors.primary,
                         ),
                         hintText: 'Where are you going?',
-                        contentPadding: EdgeInsets.symmetric(
-                          vertical: 18,
-                        ),
+                        contentPadding: EdgeInsets.symmetric(vertical: 18),
                       ),
                     ),
                   ),
@@ -125,10 +110,7 @@ class HomeScreen extends StatelessWidget {
                   // =========================
                   const Text(
                     'Services',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                   ),
 
                   const SizedBox(height: 16),
@@ -138,18 +120,25 @@ class HomeScreen extends StatelessWidget {
                     physics: const NeverScrollableScrollPhysics(),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      mainAxisExtent: 135,
-                    ),
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
+                          mainAxisExtent: 135,
+                        ),
                     children: [
                       _serviceTile(
                         icon: Icons.local_taxi_rounded,
                         title: 'RIMA Go',
                         subtitle: 'Book a ride',
                         background: const Color(0xFFEAF6ED),
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RideBookingScreen(),
+                            ),
+                          );
+                        },
                       ),
                       _serviceTile(
                         icon: Icons.restaurant_rounded,
@@ -182,10 +171,7 @@ class HomeScreen extends StatelessWidget {
                   // =========================
                   const Text(
                     'Quick access',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                   ),
 
                   const SizedBox(height: 15),
@@ -196,9 +182,7 @@ class HomeScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: Colors.black12,
-                      ),
+                      border: Border.all(color: Colors.black12),
                     ),
                     child: const Row(
                       children: [
@@ -222,9 +206,7 @@ class HomeScreen extends StatelessWidget {
                               SizedBox(height: 3),
                               Text(
                                 'Your rides, orders and deliveries',
-                                style: TextStyle(
-                                  color: Colors.black54,
-                                ),
+                                style: TextStyle(color: Colors.black54),
                               ),
                             ],
                           ),
@@ -280,10 +262,7 @@ class HomeScreen extends StatelessWidget {
   // =========================
   // HEADER BUTTON
   // =========================
-  static Widget _circleButton(
-    IconData icon,
-    VoidCallback onPressed,
-  ) {
+  static Widget _circleButton(IconData icon, VoidCallback onPressed) {
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFFFFF6DC),
@@ -291,10 +270,7 @@ class HomeScreen extends StatelessWidget {
       ),
       child: IconButton(
         onPressed: onPressed,
-        icon: Icon(
-          icon,
-          color: RimaColors.primary,
-        ),
+        icon: Icon(icon, color: RimaColors.primary),
       ),
     );
   }
@@ -321,11 +297,7 @@ class HomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 36,
-                color: RimaColors.primary,
-              ),
+              Icon(icon, size: 36, color: RimaColors.primary),
               const SizedBox(height: 14),
               Text(
                 title,
@@ -337,10 +309,7 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.black54,
-                ),
+                style: const TextStyle(fontSize: 13, color: Colors.black54),
               ),
             ],
           ),
