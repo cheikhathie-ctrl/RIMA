@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'theme/app_theme.dart';
-import '../features/home/home_screen.dart';
+import '../features/onboarding/splash_screen.dart';
 
 class RimaApp extends StatelessWidget {
   const RimaApp({super.key});
@@ -12,7 +12,7 @@ class RimaApp extends StatelessWidget {
       title: 'RIMA',
       debugShowCheckedModeBanner: false,
       theme: RimaTheme.lightTheme,
-      home: const HomeScreen(),
+      home: const SplashScreen(),
     );
   }
 }
