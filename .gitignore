@@ -17,3 +17,6 @@ Thumbs.db
 **/.dart_tool/
 **/build/
 **/.flutter-plugins-dependencies
+
+# Local Flutter web index containing Google Maps browser key
+apps/rima_app/web/index.html
