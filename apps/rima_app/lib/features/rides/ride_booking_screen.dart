@@ -169,7 +169,9 @@ class _RideBookingScreenState extends State<RideBookingScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const LocationSearchScreen(),
+                          builder: (_) => LocationSearchScreen(
+                            pickupPosition: selectedPickupLatLng!,
+                          ),
                         ),
                       );
                     },
@@ -353,7 +355,9 @@ class _RideBookingScreenState extends State<RideBookingScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const LocationSearchScreen(),
+                                  builder: (_) => LocationSearchScreen(
+                                    pickupPosition: selectedPickupLatLng!,
+                                  ),
                                 ),
                               );
                             }

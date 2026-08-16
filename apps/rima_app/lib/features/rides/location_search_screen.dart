@@ -1,11 +1,33 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/colors.dart';
+import 'data/nouakchott_locations.dart';
 import 'destination_map_screen.dart';
 
+class GooglePlaceResult {
+  const GooglePlaceResult({
+    required this.placeId,
+    required this.name,
+    required this.address,
+    required this.position,
+    this.primaryType,
+  });
+
+  final String placeId;
+  final String name;
+  final String address;
+  final LatLng position;
+  final String? primaryType;
+}
+
 class LocationSearchScreen extends StatefulWidget {
-  const LocationSearchScreen({super.key});
+  const LocationSearchScreen({super.key, required this.pickupPosition});
+
+  final LatLng pickupPosition;
 
   @override
   State<LocationSearchScreen> createState() => _LocationSearchScreenState();
@@ -14,132 +36,190 @@ class LocationSearchScreen extends StatefulWidget {
 class _LocationSearchScreenState extends State<LocationSearchScreen> {
   final TextEditingController searchController = TextEditingController();
 
+  Timer? _debounce;
+
   String searchText = '';
 
-  final List<_RimaArea> areas = const [
-    // OFFICIAL / MAJOR AREAS
-    _RimaArea(
-      name: 'Tevragh Zeina',
-      category: 'Major area',
-      center: LatLng(18.1020, -15.9900),
-    ),
+  bool isSearchingGoogle = false;
 
-    _RimaArea(
-      name: 'Ksar',
-      category: 'Major area',
-      center: LatLng(18.1000, -15.9650),
-    ),
+  String? googleSearchError;
 
-    _RimaArea(
-      name: 'Arafat',
-      category: 'Major area',
-      center: LatLng(18.0350, -15.9500),
-    ),
-
-    _RimaArea(
-      name: 'Dar Naim',
-      category: 'Major area',
-      center: LatLng(18.1150, -15.9300),
-    ),
-
-    _RimaArea(
-      name: 'Riyadh',
-      category: 'Major area',
-      center: LatLng(18.0200, -15.9750),
-    ),
-
-    _RimaArea(
-      name: 'Teyarett',
-      category: 'Major area',
-      center: LatLng(18.1200, -15.9650),
-    ),
-
-    _RimaArea(
-      name: 'Toujounine',
-      category: 'Major area',
-      center: LatLng(18.0750, -15.8900),
-    ),
-
-    _RimaArea(
-      name: 'Sebkha',
-      category: 'Major area',
-      center: LatLng(18.0650, -16.0150),
-    ),
-
-    _RimaArea(
-      name: 'El Mina',
-      category: 'Major area',
-      center: LatLng(18.0400, -16.0000),
-    ),
-
-    // LOCAL / COMMON NAMES
-    _RimaArea(
-      name: 'Socogim',
-      category: 'Local area',
-      center: LatLng(18.0750, -15.9800),
-    ),
-
-    _RimaArea(
-      name: 'Sixième',
-      category: 'Local area',
-      center: LatLng(18.0700, -15.9700),
-    ),
-
-    _RimaArea(
-      name: 'Premier',
-      category: 'Local area',
-      center: LatLng(18.0850, -15.9750),
-    ),
-
-    _RimaArea(
-      name: 'PK 7',
-      category: 'PK area',
-      center: LatLng(18.0100, -15.9550),
-    ),
-
-    _RimaArea(
-      name: 'PK 8',
-      category: 'PK area',
-      center: LatLng(18.0000, -15.9500),
-    ),
-
-    _RimaArea(
-      name: 'PK 9',
-      category: 'PK area',
-      center: LatLng(17.9900, -15.9450),
-    ),
-
-    _RimaArea(
-      name: 'PK 10',
-      category: 'PK area',
-      center: LatLng(17.9800, -15.9400),
-    ),
-  ];
+  List<GooglePlaceResult> googlePlaces = [];
 
   @override
   void dispose() {
+    _debounce?.cancel();
     searchController.dispose();
     super.dispose();
   }
 
-  List<_RimaArea> get filteredAreas {
+  List<RimaArea> get filteredAreas {
     if (searchText.trim().isEmpty) {
-      return areas;
+      return NouakchottLocations.areas;
     }
 
-    final value = searchText.toLowerCase();
+    final String value = searchText.toLowerCase().trim();
 
-    return areas.where((area) {
-      return area.name.toLowerCase().contains(value) ||
-          area.category.toLowerCase().contains(value);
+    return NouakchottLocations.areas.where((area) {
+      final bool nameMatch = area.name.toLowerCase().contains(value);
+
+      final bool categoryMatch = area.category.toLowerCase().contains(value);
+
+      final bool aliasMatch = area.aliases.any(
+        (alias) => alias.toLowerCase().contains(value),
+      );
+
+      return nameMatch || categoryMatch || aliasMatch;
     }).toList();
   }
 
-  void _openArea(BuildContext context, _RimaArea area) {
+  void _onSearchChanged(String value) {
+    setState(() {
+      searchText = value;
+      googleSearchError = null;
+    });
+
+    _debounce?.cancel();
+
+    if (value.trim().length < 2) {
+      setState(() {
+        googlePlaces = [];
+        isSearchingGoogle = false;
+      });
+
+      return;
+    }
+
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _searchGooglePlaces(value);
+    });
+  }
+
+  Future<void> _searchGooglePlaces(String query) async {
+    final trimmedQuery = query.trim();
+
+    if (trimmedQuery.length < 2) {
+      return;
+    }
+
+    setState(() {
+      isSearchingGoogle = true;
+      googleSearchError = null;
+    });
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'search-places',
+        body: {
+          'query': trimmedQuery,
+          'latitude': widget.pickupPosition.latitude,
+          'longitude': widget.pickupPosition.longitude,
+          'radius_meters': 50000,
+        },
+      );
+
+      if (!mounted) return;
+
+      final data = response.data;
+
+      if (data == null || data is! Map) {
+        throw Exception('Invalid places response.');
+      }
+
+      if (data['error'] != null) {
+        throw Exception(data['error'].toString());
+      }
+
+      final rawPlaces = data['places'];
+
+      if (rawPlaces is! List) {
+        setState(() {
+          googlePlaces = [];
+          isSearchingGoogle = false;
+        });
+
+        return;
+      }
+
+      final results = <GooglePlaceResult>[];
+
+      for (final item in rawPlaces) {
+        if (item is! Map) {
+          continue;
+        }
+
+        final latitude = _toDouble(item['latitude']);
+
+        final longitude = _toDouble(item['longitude']);
+
+        if (latitude == null || longitude == null) {
+          continue;
+        }
+
+        results.add(
+          GooglePlaceResult(
+            placeId: item['place_id']?.toString() ?? '',
+            name: item['name']?.toString() ?? 'Unknown place',
+            address: item['address']?.toString() ?? '',
+            position: LatLng(latitude, longitude),
+            primaryType: item['primary_type']?.toString(),
+          ),
+        );
+      }
+
+      if (!mounted) return;
+
+      // Ignore an older search response if the user
+      // has already typed something different.
+      if (searchController.text.trim() != trimmedQuery) {
+        return;
+      }
+
+      setState(() {
+        googlePlaces = results;
+        isSearchingGoogle = false;
+      });
+    } on FunctionException catch (e) {
+      if (!mounted) return;
+
+      debugPrint('RIMA PLACES FUNCTION ERROR: ${e.details}');
+
+      setState(() {
+        googlePlaces = [];
+        googleSearchError = 'Unable to search Google places.';
+        isSearchingGoogle = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      debugPrint('RIMA PLACES SEARCH ERROR: $e');
+
+      setState(() {
+        googlePlaces = [];
+        googleSearchError = 'Unable to search Google places.';
+        isSearchingGoogle = false;
+      });
+    }
+  }
+
+  static double? _toDouble(dynamic value) {
+    if (value is double) {
+      return value;
+    }
+
+    if (value is int) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  void _openArea(BuildContext context, RimaArea area) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => DestinationMapScreen(
+          pickupPosition: widget.pickupPosition,
           areaName: area.name,
           areaCenter: area.center,
           landmarks: _landmarksForArea(area),
@@ -148,37 +228,63 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     );
   }
 
-  List<RimaLandmark> _landmarksForArea(_RimaArea area) {
-    // TEMPORARY DEVELOPMENT LANDMARKS.
-    // Later these will come from the RIMA location database.
+  void _openGooglePlace(GooglePlaceResult place) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DestinationMapScreen(
+          pickupPosition: widget.pickupPosition,
+          areaName: place.name,
+          areaCenter: place.position,
+          landmarks: const [],
+        ),
+      ),
+    );
+  }
 
-    final LatLng center = area.center;
+  void _openDirectMap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DestinationMapScreen(
+          pickupPosition: widget.pickupPosition,
+          areaName: 'Pinned destination',
+          areaCenter: widget.pickupPosition,
+          landmarks: const [],
+        ),
+      ),
+    );
+  }
+
+  List<RimaLandmark> _landmarksForArea(RimaArea area) {
+    // DEVELOPMENT DATA ONLY.
+    // These names/coordinates will later be
+    // replaced by the verified RIMA landmark
+    // database.
+
+    final center = area.center;
 
     return [
       RimaLandmark(
-        name: '${area.name} Central Mosque',
+        name: '${area.name} Mosque',
         type: 'Mosque',
         position: LatLng(center.latitude + 0.0020, center.longitude + 0.0010),
       ),
-
       RimaLandmark(
         name: '${area.name} Market',
         type: 'Market',
         position: LatLng(center.latitude - 0.0015, center.longitude + 0.0020),
       ),
-
       RimaLandmark(
         name: '${area.name} School',
         type: 'School',
         position: LatLng(center.latitude + 0.0010, center.longitude - 0.0020),
       ),
-
       RimaLandmark(
         name: '${area.name} Health Center',
         type: 'Hospital',
         position: LatLng(center.latitude - 0.0020, center.longitude - 0.0010),
       ),
-
       RimaLandmark(
         name: '${area.name} Poteau',
         type: 'Poteau',
@@ -189,6 +295,10 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final areas = filteredAreas;
+
+    final bool hasSearch = searchText.trim().isNotEmpty;
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDF7),
       appBar: AppBar(
@@ -212,17 +322,43 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
                   child: TextField(
                     controller: searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        searchText = value;
-                      });
-                    },
+                    onChanged: _onSearchChanged,
+                    textInputAction: TextInputAction.search,
                     decoration: InputDecoration(
-                      hintText: 'Search area, PK or landmark',
+                      hintText: 'Search place, area, PK or landmark',
                       prefixIcon: const Icon(
                         Icons.search_rounded,
                         color: RimaColors.primary,
                       ),
+                      suffixIcon: isSearchingGoogle
+                          ? const Padding(
+                              padding: EdgeInsets.all(14),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: RimaColors.primary,
+                                ),
+                              ),
+                            )
+                          : searchText.isNotEmpty
+                          ? IconButton(
+                              onPressed: () {
+                                searchController.clear();
+
+                                _debounce?.cancel();
+
+                                setState(() {
+                                  searchText = '';
+                                  googlePlaces = [];
+                                  googleSearchError = null;
+                                  isSearchingGoogle = false;
+                                });
+                              },
+                              icon: const Icon(Icons.close_rounded),
+                            )
+                          : null,
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
@@ -237,11 +373,69 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
                     children: [
-                      const _SectionTitle(title: 'Popular areas'),
+                      if (hasSearch) ...[
+                        const Text(
+                          'Places',
+                          style: TextStyle(
+                            fontSize: 21,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        if (googleSearchError != null)
+                          _SearchErrorCard(
+                            message: googleSearchError!,
+                            onRetry: () {
+                              _searchGooglePlaces(searchController.text);
+                            },
+                          ),
+
+                        if (!isSearchingGoogle &&
+                            googleSearchError == null &&
+                            googlePlaces.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              'No Google places found yet.',
+                              style: TextStyle(color: Colors.black54),
+                            ),
+                          ),
+
+                        ...googlePlaces.map(
+                          (place) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _GooglePlaceCard(
+                              place: place,
+                              onTap: () => _openGooglePlace(place),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+                      ],
+
+                      Text(
+                        hasSearch ? 'RIMA local areas' : 'Popular areas',
+                        style: const TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
 
                       const SizedBox(height: 12),
 
-                      ...filteredAreas.map(
+                      if (areas.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            'No matching RIMA local area found.',
+                            style: TextStyle(color: Colors.black54),
+                          ),
+                        ),
+
+                      ...areas.map(
                         (area) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: _AreaCard(
@@ -259,7 +453,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                         color: const Color(0xFFFFF3D6),
                         borderRadius: BorderRadius.circular(20),
                         child: InkWell(
-                          onTap: () {},
+                          onTap: _openDirectMap,
                           borderRadius: BorderRadius.circular(20),
                           child: const Padding(
                             padding: EdgeInsets.all(18),
@@ -269,9 +463,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                                   Icons.map_outlined,
                                   color: RimaColors.primary,
                                 ),
-
                                 SizedBox(width: 14),
-
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
@@ -286,13 +478,12 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                                       ),
                                       SizedBox(height: 3),
                                       Text(
-                                        'Use a pin when you know the location.',
+                                        'Move the pin to the exact destination.',
                                         style: TextStyle(color: Colors.black54),
                                       ),
                                     ],
                                   ),
                                 ),
-
                                 Icon(Icons.chevron_right_rounded),
                               ],
                             ),
@@ -311,22 +502,10 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
   }
 }
 
-class _RimaArea {
-  const _RimaArea({
-    required this.name,
-    required this.category,
-    required this.center,
-  });
+class _GooglePlaceCard extends StatelessWidget {
+  const _GooglePlaceCard({required this.place, required this.onTap});
 
-  final String name;
-  final String category;
-  final LatLng center;
-}
-
-class _AreaCard extends StatelessWidget {
-  const _AreaCard({required this.area, required this.onTap});
-
-  final _RimaArea area;
+  final GooglePlaceResult place;
   final VoidCallback onTap;
 
   @override
@@ -345,13 +524,85 @@ class _AreaCard extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: area.category == 'Major area'
+                  color: const Color(0xFFEAF6ED),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.place_outlined,
+                  color: RimaColors.primary,
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      place.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+
+                    if (place.address.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        place.address,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              const Icon(Icons.chevron_right_rounded, color: Colors.black38),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AreaCard extends StatelessWidget {
+  const _AreaCard({required this.area, required this.onTap});
+
+  final RimaArea area;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: area.type == RimaLocationType.officialArea
                       ? const Color(0xFFEAF6ED)
                       : const Color(0xFFFFF3D6),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
-                  area.category == 'PK area'
+                  area.type == RimaLocationType.pkArea
                       ? Icons.route_outlined
                       : Icons.location_city_outlined,
                   color: RimaColors.primary,
@@ -364,12 +615,27 @@ class _AreaCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      area.name,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            area.name,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+
+                        if (area.verified) ...[
+                          const SizedBox(width: 7),
+                          const Icon(
+                            Icons.verified_rounded,
+                            size: 17,
+                            color: RimaColors.primary,
+                          ),
+                        ],
+                      ],
                     ),
 
                     const SizedBox(height: 3),
@@ -391,16 +657,29 @@ class _AreaCard extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
+class _SearchErrorCard extends StatelessWidget {
+  const _SearchErrorCard({required this.message, required this.onRetry});
 
-  final String title;
+  final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3D6),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: RimaColors.primary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message)),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
     );
   }
 }

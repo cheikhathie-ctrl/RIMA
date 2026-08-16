@@ -19,24 +19,27 @@ class RimaLandmark {
 class DestinationMapScreen extends StatefulWidget {
   const DestinationMapScreen({
     super.key,
+    required this.pickupPosition,
     required this.areaName,
     required this.areaCenter,
     required this.landmarks,
   });
 
+  final LatLng pickupPosition;
   final String areaName;
   final LatLng areaCenter;
   final List<RimaLandmark> landmarks;
 
   @override
-  State<DestinationMapScreen> createState() => _DestinationMapScreenState();
+  State<DestinationMapScreen> createState() =>
+      _DestinationMapScreenState();
 }
 
-class _DestinationMapScreenState extends State<DestinationMapScreen> {
+class _DestinationMapScreenState
+    extends State<DestinationMapScreen> {
   GoogleMapController? mapController;
 
   late LatLng selectedDestination;
-
   String selectedDestinationName = '';
 
   @override
@@ -54,7 +57,10 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
     });
 
     mapController?.animateCamera(
-      CameraUpdate.newLatLngZoom(landmark.position, 16),
+      CameraUpdate.newLatLngZoom(
+        landmark.position,
+        16,
+      ),
     );
   }
 
@@ -62,18 +68,26 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RideOptionsScreen(destination: selectedDestinationName),
+        builder: (_) => RideOptionsScreen(
+          pickupPosition: widget.pickupPosition,
+          destinationPosition: selectedDestination,
+          destination: selectedDestinationName,
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final Set<Marker> landmarkMarkers = widget.landmarks.map((landmark) {
+    final Set<Marker> landmarkMarkers =
+        widget.landmarks.map((landmark) {
       return Marker(
         markerId: MarkerId(landmark.name),
         position: landmark.position,
-        infoWindow: InfoWindow(title: landmark.name, snippet: landmark.type),
+        infoWindow: InfoWindow(
+          title: landmark.name,
+          snippet: landmark.type,
+        ),
         onTap: () {
           _selectLandmark(landmark);
         },
@@ -96,9 +110,16 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: const BoxConstraints(
+              maxWidth: 520,
+            ),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+              padding: const EdgeInsets.fromLTRB(
+                20,
+                10,
+                20,
+                40,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -115,12 +136,14 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
 
                   const Text(
                     'Choose a landmark or move the map to your destination.',
-                    style: TextStyle(fontSize: 15, color: Colors.black54),
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.black54,
+                    ),
                   ),
 
                   const SizedBox(height: 22),
 
-                  // MAP
                   ClipRRect(
                     borderRadius: BorderRadius.circular(24),
                     child: SizedBox(
@@ -130,7 +153,8 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                         alignment: Alignment.center,
                         children: [
                           GoogleMap(
-                            initialCameraPosition: CameraPosition(
+                            initialCameraPosition:
+                                CameraPosition(
                               target: widget.areaCenter,
                               zoom: 14,
                             ),
@@ -138,7 +162,8 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                               mapController = controller;
                             },
                             onCameraMove: (position) {
-                              selectedDestination = position.target;
+                              selectedDestination =
+                                  position.target;
 
                               setState(() {
                                 selectedDestinationName =
@@ -166,16 +191,20 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                             right: 12,
                             bottom: 12,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
+                              padding:
+                                  const EdgeInsets.symmetric(
                                 horizontal: 14,
                                 vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.94),
-                                borderRadius: BorderRadius.circular(14),
+                                color: Colors.white
+                                    .withValues(alpha: 0.94),
+                                borderRadius:
+                                    BorderRadius.circular(14),
                               ),
                               child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
                                 children: [
                                   Icon(
                                     Icons.open_with_rounded,
@@ -187,7 +216,8 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                                     'Move map to adjust destination',
                                     style: TextStyle(
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight:
+                                          FontWeight.w600,
                                     ),
                                   ),
                                 ],
@@ -201,7 +231,6 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
 
                   const SizedBox(height: 24),
 
-                  // SELECTED DESTINATION
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
@@ -219,7 +248,8 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: [
                               const Text(
                                 'Selected destination',
@@ -233,7 +263,8 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                                 selectedDestinationName,
                                 style: const TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight:
+                                      FontWeight.w800,
                                 ),
                               ),
                             ],
@@ -247,34 +278,51 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
 
                   const Text(
                     'Nearby landmarks',
-                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
 
                   const SizedBox(height: 12),
 
                   ...widget.landmarks.map(
                     (landmark) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding:
+                          const EdgeInsets.only(bottom: 10),
                       child: Material(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius:
+                            BorderRadius.circular(18),
                         child: InkWell(
-                          onTap: () => _selectLandmark(landmark),
-                          borderRadius: BorderRadius.circular(18),
+                          onTap: () =>
+                              _selectLandmark(landmark),
+                          borderRadius:
+                              BorderRadius.circular(18),
                           child: Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding:
+                                const EdgeInsets.all(16),
                             child: Row(
                               children: [
                                 Container(
                                   width: 44,
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFFFF3D6),
-                                    borderRadius: BorderRadius.circular(14),
+                                    color:
+                                        const Color(
+                                      0xFFFFF3D6,
+                                    ),
+                                    borderRadius:
+                                        BorderRadius.circular(
+                                      14,
+                                    ),
                                   ),
                                   child: Icon(
-                                    _iconForType(landmark.type),
-                                    color: RimaColors.primary,
+                                    _iconForType(
+                                      landmark.type,
+                                    ),
+                                    color:
+                                        RimaColors.primary,
                                   ),
                                 ),
 
@@ -283,20 +331,25 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        CrossAxisAlignment
+                                            .start,
                                     children: [
                                       Text(
                                         landmark.name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
+                                        style:
+                                            const TextStyle(
+                                          fontWeight:
+                                              FontWeight.w800,
                                           fontSize: 16,
                                         ),
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
                                         landmark.type,
-                                        style: const TextStyle(
-                                          color: Colors.black54,
+                                        style:
+                                            const TextStyle(
+                                          color:
+                                              Colors.black54,
                                         ),
                                       ),
                                     ],
@@ -304,7 +357,8 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                                 ),
 
                                 const Icon(
-                                  Icons.chevron_right_rounded,
+                                  Icons
+                                      .chevron_right_rounded,
                                   color: Colors.black38,
                                 ),
                               ],
@@ -322,7 +376,9 @@ class _DestinationMapScreenState extends State<DestinationMapScreen> {
                     height: 58,
                     child: ElevatedButton.icon(
                       onPressed: _confirmDestination,
-                      icon: const Icon(Icons.check_circle_outline_rounded),
+                      icon: const Icon(
+                        Icons.check_circle_outline_rounded,
+                      ),
                       label: const Text(
                         'Confirm destination',
                         style: TextStyle(
