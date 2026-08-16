@@ -1,0 +1,19 @@
+# RIMA local secrets / environment files
+.env
+.env.*
+!.env.example
+
+# Local configuration containing API keys
+local.properties
+*.secrets
+*.secret
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Flutter / Dart
+**/.dart_tool/
+**/build/
+**/.flutter-plugins-dependencies
