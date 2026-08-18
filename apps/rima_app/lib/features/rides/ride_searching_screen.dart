@@ -22,18 +22,20 @@ class RideSearchingScreen extends StatefulWidget {
   final String fare;
 
   @override
-  State<RideSearchingScreen> createState() =>
-      _RideSearchingScreenState();
+  State<RideSearchingScreen> createState() => _RideSearchingScreenState();
 }
 
-class _RideSearchingScreenState
-    extends State<RideSearchingScreen> {
+class _RideSearchingScreenState extends State<RideSearchingScreen> {
   Timer? _pollTimer;
 
   String rideStatus = 'searching';
 
   String? assignedDriverId;
   String? vehicleId;
+
+  // Tracks which assigned driver/vehicle details were loaded
+  // so we do not call the details RPC on every poll.
+  String? _loadedDriverDetailsKey;
 
   int? distanceMeters;
   int? estimatedDurationSeconds;
@@ -59,12 +61,9 @@ class _RideSearchingScreenState
 
     _loadRide();
 
-    _pollTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) {
-        _loadRide();
-      },
-    );
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _loadRide();
+    });
   }
 
   @override
@@ -104,25 +103,21 @@ class _RideSearchingScreenState
   }
 
   String get formattedDuration {
-    final value =
-        estimatedDurationSeconds;
+    final value = estimatedDurationSeconds;
 
     if (value == null) {
       return '--';
     }
 
-    final totalMinutes =
-        (value / 60).ceil();
+    final totalMinutes = (value / 60).ceil();
 
     if (totalMinutes < 60) {
       return '$totalMinutes min';
     }
 
-    final hours =
-        totalMinutes ~/ 60;
+    final hours = totalMinutes ~/ 60;
 
-    final minutes =
-        totalMinutes % 60;
+    final minutes = totalMinutes % 60;
 
     if (minutes == 0) {
       return '$hours h';
@@ -133,65 +128,41 @@ class _RideSearchingScreenState
 
   Future<void> _loadRide() async {
     try {
-      final data =
-          await Supabase.instance.client
-              .from('rides')
-              .select(
-                'status, assigned_driver_id, vehicle_id, '
-                'distance_meters, estimated_duration_seconds',
-              )
-              .eq(
-                'id',
-                widget.rideId,
-              )
-              .single();
+      final data = await Supabase.instance.client
+          .from('rides')
+          .select(
+            'status, assigned_driver_id, vehicle_id, '
+            'distance_meters, estimated_duration_seconds',
+          )
+          .eq('id', widget.rideId)
+          .single();
 
-      final newStatus =
-          data['status']?.toString() ??
-              'searching';
+      final newStatus = data['status']?.toString() ?? 'searching';
 
-      final newDriverId =
-          data['assigned_driver_id']
-              ?.toString();
+      final newDriverId = data['assigned_driver_id']?.toString();
 
-      final newVehicleId =
-          data['vehicle_id']
-              ?.toString();
+      final newVehicleId = data['vehicle_id']?.toString();
 
-      final rawDistance =
-          data['distance_meters'];
+      final rawDistance = data['distance_meters'];
 
-      final rawDuration =
-          data['estimated_duration_seconds'];
+      final rawDuration = data['estimated_duration_seconds'];
 
-      final parsedDistance =
-          rawDistance is int
-              ? rawDistance
-              : int.tryParse(
-                  rawDistance
-                          ?.toString() ??
-                      '',
-                );
+      final parsedDistance = rawDistance is int
+          ? rawDistance
+          : int.tryParse(rawDistance?.toString() ?? '');
 
-      final parsedDuration =
-          rawDuration is int
-              ? rawDuration
-              : int.tryParse(
-                  rawDuration
-                          ?.toString() ??
-                      '',
-                );
+      final parsedDuration = rawDuration is int
+          ? rawDuration
+          : int.tryParse(rawDuration?.toString() ?? '');
 
       if (newDriverId != null) {
-        await _loadDriver(
-          newDriverId,
-        );
-      }
+        final detailsKey = '$newDriverId|${newVehicleId ?? ''}';
 
-      if (newVehicleId != null) {
-        await _loadVehicle(
-          newVehicleId,
-        );
+        if (_loadedDriverDetailsKey != detailsKey) {
+          await _loadDriverDetails();
+
+          _loadedDriverDetailsKey = detailsKey;
+        }
       }
 
       if (!mounted) return;
@@ -199,54 +170,42 @@ class _RideSearchingScreenState
       setState(() {
         rideStatus = newStatus;
 
-        assignedDriverId =
-            newDriverId;
+        assignedDriverId = newDriverId;
 
-        vehicleId =
-            newVehicleId;
+        vehicleId = newVehicleId;
 
-        distanceMeters =
-            parsedDistance;
+        distanceMeters = parsedDistance;
 
-        estimatedDurationSeconds =
-            parsedDuration;
+        estimatedDurationSeconds = parsedDuration;
 
         isLoading = false;
         loadError = null;
       });
 
-      if (newStatus ==
-          'completed') {
+      if (newStatus == 'completed') {
         _pollTimer?.cancel();
         _handleCompletedRide();
-      } else if (newStatus ==
-          'cancelled') {
+      } else if (newStatus == 'cancelled') {
         _pollTimer?.cancel();
         _handleCancelledRide();
       }
     } on PostgrestException catch (e) {
       if (!mounted) return;
 
-      debugPrint(
-        'RIMA RIDE STATUS ERROR: ${e.message}',
-      );
+      debugPrint('RIMA RIDE STATUS ERROR: ${e.message}');
 
       setState(() {
         isLoading = false;
-        loadError =
-            'Unable to check ride status.';
+        loadError = 'Unable to check ride status.';
       });
     } catch (e) {
       if (!mounted) return;
 
-      debugPrint(
-        'RIMA RIDE STATUS ERROR: $e',
-      );
+      debugPrint('RIMA RIDE STATUS ERROR: $e');
 
       setState(() {
         isLoading = false;
-        loadError =
-            'Unable to check ride status.';
+        loadError = 'Unable to check ride status.';
       });
     }
   }
@@ -258,21 +217,15 @@ class _RideSearchingScreenState
 
     _completionHandled = true;
 
-    Future.delayed(
-      const Duration(seconds: 2),
-      () {
-        if (!mounted) return;
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
 
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                const HomeScreen(),
-          ),
-          (route) => false,
-        );
-      },
-    );
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    });
   }
 
   void _handleCancelledRide() {
@@ -282,85 +235,63 @@ class _RideSearchingScreenState
 
     _cancellationHandled = true;
 
-    Future.delayed(
-      const Duration(seconds: 2),
-      () {
-        if (!mounted) return;
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
 
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                const HomeScreen(),
-          ),
-          (route) => false,
-        );
-      },
-    );
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    });
   }
 
-  Future<void> _loadDriver(
-    String driverId,
-  ) async {
+  Future<void> _loadDriverDetails() async {
     try {
-      final data =
-          await Supabase.instance.client
-              .from('drivers')
-              .select('rating')
-              .eq(
-                'id',
-                driverId,
-              )
-              .single();
-
-      final rawRating =
-          data['rating'];
-
-      driverRating =
-          rawRating == null
-              ? null
-              : double.tryParse(
-                  rawRating.toString(),
-                );
-    } catch (e) {
-      debugPrint(
-        'RIMA DRIVER LOAD ERROR: $e',
+      final result = await Supabase.instance.client.rpc(
+        'get_ride_driver_details',
+        params: {'p_ride_id': widget.rideId},
       );
-    }
-  }
 
-  Future<void> _loadVehicle(
-    String vehicleId,
-  ) async {
-    try {
-      final data =
-          await Supabase.instance.client
-              .from('vehicles')
-              .select(
-                'make, model, color, license_plate',
-              )
-              .eq(
-                'id',
-                vehicleId,
-              )
-              .single();
+      if (!mounted) return;
 
-      vehicleMake =
-          data['make']?.toString();
+      if (result is! List || result.isEmpty) {
+        debugPrint('RIMA DRIVER DETAILS: no public driver details returned.');
+        return;
+      }
 
-      vehicleModel =
-          data['model']?.toString();
+      final row = Map<String, dynamic>.from(result.first as Map);
 
-      vehicleColor =
-          data['color']?.toString();
+      final rawRating = row['driver_rating'];
 
-      vehiclePlate =
-          data['license_plate']
-              ?.toString();
-    } catch (e) {
+      setState(() {
+        assignedDriverId = row['driver_id']?.toString() ?? assignedDriverId;
+
+        vehicleId = row['vehicle_id']?.toString() ?? vehicleId;
+
+        driverRating = rawRating == null
+            ? null
+            : double.tryParse(rawRating.toString());
+
+        vehicleMake = row['vehicle_make']?.toString();
+
+        vehicleModel = row['vehicle_model']?.toString();
+
+        vehicleColor = row['vehicle_color']?.toString();
+
+        vehiclePlate = row['vehicle_plate']?.toString();
+      });
+
       debugPrint(
-        'RIMA VEHICLE LOAD ERROR: $e',
+        'RIMA DRIVER DETAILS LOADED: '
+        '${vehicleMake ?? ''} '
+        '${vehicleModel ?? ''} '
+        '${vehiclePlate ?? ''}',
       );
+    } on PostgrestException catch (e) {
+      debugPrint('RIMA DRIVER DETAILS RPC ERROR: ${e.message}');
+    } catch (e) {
+      debugPrint('RIMA DRIVER DETAILS ERROR: $e');
     }
   }
 
@@ -369,43 +300,26 @@ class _RideSearchingScreenState
       return;
     }
 
-    final shouldCancel =
-        await showDialog<bool>(
+    final shouldCancel = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title:
-              const Text(
-            'Cancel ride?',
-          ),
-          content:
-              const Text(
+          title: const Text('Cancel ride?'),
+          content: const Text(
             'Are you sure you want to cancel this RIMA ride?',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(
-                  context,
-                  false,
-                );
+                Navigator.pop(context, false);
               },
-              child:
-                  const Text(
-                'Keep ride',
-              ),
+              child: const Text('Keep ride'),
             ),
             TextButton(
               onPressed: () {
-                Navigator.pop(
-                  context,
-                  true,
-                );
+                Navigator.pop(context, true);
               },
-              child:
-                  const Text(
-                'Cancel ride',
-              ),
+              child: const Text('Cancel ride'),
             ),
           ],
         );
@@ -424,10 +338,8 @@ class _RideSearchingScreenState
       await Supabase.instance.client.rpc(
         'cancel_ride',
         params: {
-          'p_ride_id':
-              widget.rideId,
-          'p_reason':
-              'Cancelled by customer',
+          'p_ride_id': widget.rideId,
+          'p_reason': 'Cancelled by customer',
         },
       );
 
@@ -435,23 +347,14 @@ class _RideSearchingScreenState
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content:
-              Text('Ride cancelled.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ride cancelled.')));
     } on PostgrestException catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        SnackBar(
-          content: Text(
-            'Unable to cancel ride: ${e.message}',
-          ),
-        ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to cancel ride: ${e.message}')),
       );
     } finally {
       if (mounted) {
@@ -527,15 +430,13 @@ class _RideSearchingScreenState
         return Icons.local_taxi_rounded;
 
       case 'driver_arrived':
-        return Icons
-            .directions_car_filled_rounded;
+        return Icons.directions_car_filled_rounded;
 
       case 'in_progress':
         return Icons.route_rounded;
 
       case 'completed':
-        return Icons
-            .check_circle_rounded;
+        return Icons.check_circle_rounded;
 
       case 'cancelled':
         return Icons.cancel_outlined;
@@ -546,27 +447,18 @@ class _RideSearchingScreenState
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(
-        0xFFFFFDF7,
-      ),
+      backgroundColor: const Color(0xFFFFFDF7),
 
       appBar: AppBar(
-        backgroundColor:
-            Colors.transparent,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
           _statusTitle,
-          style:
-              const TextStyle(
-            color:
-                RimaColors.primary,
-            fontWeight:
-                FontWeight.w800,
+          style: const TextStyle(
+            color: RimaColors.primary,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -574,17 +466,10 @@ class _RideSearchingScreenState
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(
-              maxWidth: 520,
-            ),
+            constraints: const BoxConstraints(maxWidth: 520),
             child: Padding(
-              padding:
-                  const EdgeInsets.all(
-                20,
-              ),
-              child:
-                  _buildContent(),
+              padding: const EdgeInsets.all(20),
+              child: _buildContent(),
             ),
           ),
         ),
@@ -595,18 +480,14 @@ class _RideSearchingScreenState
   Widget _buildContent() {
     if (isLoading) {
       return const Center(
-        child:
-            CircularProgressIndicator(
-          color: RimaColors.primary,
-        ),
+        child: CircularProgressIndicator(color: RimaColors.primary),
       );
     }
 
     if (loadError != null) {
       return Center(
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
               Icons.warning_amber_rounded,
@@ -616,20 +497,11 @@ class _RideSearchingScreenState
 
             const SizedBox(height: 15),
 
-            Text(
-              loadError!,
-              textAlign:
-                  TextAlign.center,
-            ),
+            Text(loadError!, textAlign: TextAlign.center),
 
             const SizedBox(height: 18),
 
-            ElevatedButton(
-              onPressed: _loadRide,
-              child: const Text(
-                'Retry',
-              ),
-            ),
+            ElevatedButton(onPressed: _loadRide, child: const Text('Retry')),
           ],
         ),
       );
@@ -644,41 +516,29 @@ class _RideSearchingScreenState
             width: 105,
             height: 105,
 
-            decoration:
-                const BoxDecoration(
+            decoration: const BoxDecoration(
               color: Color(0xFFEAF6ED),
               shape: BoxShape.circle,
             ),
 
-            child: Icon(
-              _statusIcon,
-              size: 50,
-              color: RimaColors.primary,
-            ),
+            child: Icon(_statusIcon, size: 50, color: RimaColors.primary),
           ),
 
           const SizedBox(height: 22),
 
-          if (!driverAssigned &&
-              !rideCancelled) ...[
-            const CircularProgressIndicator(
-              color: RimaColors.primary,
-            ),
+          if (!driverAssigned && !rideCancelled) ...[
+            const CircularProgressIndicator(color: RimaColors.primary),
 
             const SizedBox(height: 20),
           ],
 
           Text(
             _statusTitle,
-            textAlign:
-                TextAlign.center,
-            style:
-                const TextStyle(
+            textAlign: TextAlign.center,
+            style: const TextStyle(
               fontSize: 25,
-              fontWeight:
-                  FontWeight.w800,
-              color:
-                  RimaColors.primary,
+              fontWeight: FontWeight.w800,
+              color: RimaColors.primary,
             ),
           ),
 
@@ -686,10 +546,8 @@ class _RideSearchingScreenState
 
           Text(
             _statusMessage,
-            textAlign:
-                TextAlign.center,
-            style:
-                const TextStyle(
+            textAlign: TextAlign.center,
+            style: const TextStyle(
               fontSize: 16,
               color: Colors.black54,
               height: 1.4,
@@ -708,20 +566,13 @@ class _RideSearchingScreenState
           //     Driver -> Destination
           //
           RideLiveMap(
-            key: ValueKey(
-              'customer-map-${widget.rideId}',
-            ),
-            rideId:
-                widget.rideId,
+            key: ValueKey('customer-map-${widget.rideId}'),
+            rideId: widget.rideId,
             height: 250,
-            mode:
-                RideMapMode.customer,
+            mode: RideMapMode.customer,
           ),
 
-          if (driverAssigned) ...[
-            const SizedBox(height: 24),
-            _driverCard(),
-          ],
+          if (driverAssigned) ...[const SizedBox(height: 24), _driverCard()],
 
           const SizedBox(height: 24),
 
@@ -729,8 +580,7 @@ class _RideSearchingScreenState
 
           if (!rideCancelled &&
               !rideCompleted &&
-              rideStatus !=
-                  'in_progress') ...[
+              rideStatus != 'in_progress') ...[
             const SizedBox(height: 20),
 
             SizedBox(
@@ -738,28 +588,17 @@ class _RideSearchingScreenState
               height: 54,
 
               child: OutlinedButton.icon(
-                onPressed:
-                    isCancelling
-                        ? null
-                        : _cancelRide,
+                onPressed: isCancelling ? null : _cancelRide,
 
                 icon: isCancelling
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(
-                        Icons.close_rounded,
-                      ),
+                    : const Icon(Icons.close_rounded),
 
-                label:
-                    const Text(
-                  'Cancel ride',
-                ),
+                label: const Text('Cancel ride'),
               ),
             ),
           ],
@@ -783,19 +622,15 @@ class _RideSearchingScreenState
 
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.black12,
-        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black12),
       ),
 
       child: Row(
         children: [
           const CircleAvatar(
             radius: 27,
-            backgroundColor:
-                Color(0xFFEAF6ED),
+            backgroundColor: Color(0xFFEAF6ED),
             child: Icon(
               Icons.person_rounded,
               color: RimaColors.primary,
@@ -807,48 +642,28 @@ class _RideSearchingScreenState
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'RIMA Driver',
-                  style:
-                      TextStyle(
-                    fontSize: 17,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                 ),
 
-                if (vehicleDescription
-                    .isNotEmpty) ...[
-                  const SizedBox(
-                    height: 4,
-                  ),
+                if (vehicleDescription.isNotEmpty) ...[
+                  const SizedBox(height: 4),
 
                   Text(
                     vehicleDescription,
-                    style:
-                        const TextStyle(
-                      color:
-                          Colors.black54,
-                    ),
+                    style: const TextStyle(color: Colors.black54),
                   ),
                 ],
 
-                if (vehiclePlate !=
-                    null) ...[
-                  const SizedBox(
-                    height: 3,
-                  ),
+                if (vehiclePlate != null) ...[
+                  const SizedBox(height: 3),
 
                   Text(
                     vehiclePlate!,
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ],
               ],
@@ -858,21 +673,11 @@ class _RideSearchingScreenState
           if (driverRating != null)
             Column(
               children: [
-                const Icon(
-                  Icons.star_rounded,
-                  color: RimaColors.gold,
-                ),
+                const Icon(Icons.star_rounded, color: RimaColors.gold),
 
                 Text(
-                  driverRating!
-                      .toStringAsFixed(
-                    1,
-                  ),
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.w700,
-                  ),
+                  driverRating!.toStringAsFixed(1),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -887,21 +692,13 @@ class _RideSearchingScreenState
       padding: const EdgeInsets.all(18),
 
       decoration: BoxDecoration(
-        color:
-            const Color(
-          0xFFFFF6DC,
-        ),
-        borderRadius:
-            BorderRadius.circular(20),
+        color: const Color(0xFFFFF6DC),
+        borderRadius: BorderRadius.circular(20),
       ),
 
       child: Column(
         children: [
-          _summaryRow(
-            Icons.local_taxi_outlined,
-            'Ride',
-            widget.rideType,
-          ),
+          _summaryRow(Icons.local_taxi_outlined, 'Ride', widget.rideType),
 
           const Divider(height: 25),
 
@@ -913,77 +710,44 @@ class _RideSearchingScreenState
 
           const Divider(height: 25),
 
-          _summaryRow(
-            Icons.route_outlined,
-            'Distance',
-            formattedDistance,
-          ),
+          _summaryRow(Icons.route_outlined, 'Distance', formattedDistance),
 
           const Divider(height: 25),
 
-          _summaryRow(
-            Icons.schedule_outlined,
-            'Trip time',
-            formattedDuration,
-          ),
+          _summaryRow(Icons.schedule_outlined, 'Trip time', formattedDuration),
 
           const Divider(height: 25),
 
-          _summaryRow(
-            Icons.payments_outlined,
-            'Estimated fare',
-            widget.fare,
-          ),
+          _summaryRow(Icons.payments_outlined, 'Estimated fare', widget.fare),
 
           const Divider(height: 25),
 
           _summaryRow(
             Icons.info_outline_rounded,
             'Status',
-            rideStatus.replaceAll(
-              '_',
-              ' ',
-            ),
+            rideStatus.replaceAll('_', ' '),
           ),
         ],
       ),
     );
   }
 
-  Widget _summaryRow(
-    IconData icon,
-    String label,
-    String value,
-  ) {
+  Widget _summaryRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(
-          icon,
-          color: RimaColors.primary,
-        ),
+        Icon(icon, color: RimaColors.primary),
 
         const SizedBox(width: 12),
 
-        Text(
-          label,
-          style:
-              const TextStyle(
-            color: Colors.black54,
-          ),
-        ),
+        Text(label, style: const TextStyle(color: Colors.black54)),
 
         const Spacer(),
 
         Flexible(
           child: Text(
             value,
-            textAlign:
-                TextAlign.right,
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.w700,
-            ),
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
       ],

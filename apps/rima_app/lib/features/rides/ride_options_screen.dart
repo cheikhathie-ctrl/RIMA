@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../app/theme/colors.dart';
+import 'location_search_screen.dart';
 import 'ride_searching_screen.dart';
 
 class RideOptionsScreen extends StatefulWidget {
@@ -10,11 +12,19 @@ class RideOptionsScreen extends StatefulWidget {
     required this.pickupPosition,
     required this.destinationPosition,
     required this.destination,
+    this.pickupLabel = 'Your pickup',
   });
 
   final LatLng pickupPosition;
   final LatLng destinationPosition;
+
   final String destination;
+
+  //
+  // Optional so existing screens that already call
+  // RideOptionsScreen do not break.
+  //
+  final String pickupLabel;
 
   @override
   State<RideOptionsScreen> createState() => _RideOptionsScreenState();
@@ -28,9 +38,17 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
   int? distanceMeters;
   int? durationSeconds;
-  String? encodedPolyline;
 
   String? routeError;
+
+  //
+  // LOCAL EDITABLE TRIP VALUES
+  //
+  late LatLng pickupPosition;
+  late LatLng destinationPosition;
+
+  late String pickupLabel;
+  late String destinationLabel;
 
   final Map<String, String> prices = {
     'RIMA Go': '250 MRU',
@@ -54,13 +72,27 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
   void initState() {
     super.initState();
 
+    pickupPosition = widget.pickupPosition;
+
+    destinationPosition = widget.destinationPosition;
+
+    pickupLabel = widget.pickupLabel;
+
+    destinationLabel = widget.destination;
+
     _loadRoute();
   }
 
+  //
+  // ROUTE CALCULATION
+  //
   Future<void> _loadRoute() async {
     setState(() {
       isLoadingRoute = true;
       routeError = null;
+
+      distanceMeters = null;
+      durationSeconds = null;
     });
 
     try {
@@ -68,12 +100,12 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
         'calculate-route',
         body: {
           'pickup': {
-            'latitude': widget.pickupPosition.latitude,
-            'longitude': widget.pickupPosition.longitude,
+            'latitude': pickupPosition.latitude,
+            'longitude': pickupPosition.longitude,
           },
           'destination': {
-            'latitude': widget.destinationPosition.latitude,
-            'longitude': widget.destinationPosition.longitude,
+            'latitude': destinationPosition.latitude,
+            'longitude': destinationPosition.longitude,
           },
         },
       );
@@ -108,9 +140,8 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
       setState(() {
         distanceMeters = parsedDistance;
-        durationSeconds = parsedDuration;
 
-        encodedPolyline = data['encoded_polyline']?.toString();
+        durationSeconds = parsedDuration;
 
         isLoadingRoute = false;
       });
@@ -121,6 +152,7 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
       setState(() {
         routeError = 'Unable to calculate route.';
+
         isLoadingRoute = false;
       });
     } catch (e) {
@@ -130,9 +162,75 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
       setState(() {
         routeError = 'Unable to calculate route.';
+
         isLoadingRoute = false;
       });
     }
+  }
+
+  //
+  // CHANGE PICKUP
+  //
+  Future<void> _changePickup() async {
+    if (isRequestingRide) {
+      return;
+    }
+
+    final result = await Navigator.push<LocationSearchResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationSearchScreen(
+          pickupPosition: pickupPosition,
+
+          mode: LocationSearchMode.pickup,
+        ),
+      ),
+    );
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    setState(() {
+      pickupPosition = result.position;
+
+      pickupLabel = result.name;
+    });
+
+    //
+    // Every time customer changes pickup,
+    // route must be recalculated.
+    //
+    await _loadRoute();
+  }
+
+  //
+  // CHANGE DESTINATION
+  //
+  //
+  // Destination selection currently continues through
+  // DestinationMapScreen. Therefore the safest behavior
+  // is to return the customer to the previous destination
+  // confirmation screen instead of creating duplicate
+  // RideOptionsScreen pages.
+  //
+  void _changeDestination() {
+    if (isRequestingRide) {
+      return;
+    }
+
+    Navigator.pop(context);
+  }
+
+  //
+  // CHANGE ENTIRE TRIP
+  //
+  void _changeTrip() {
+    if (isRequestingRide) {
+      return;
+    }
+
+    Navigator.pop(context);
   }
 
   String get formattedDistance {
@@ -179,8 +277,13 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
     return '$hours h $minutes min';
   }
 
+  //
+  // REQUEST RIDE
+  //
   Future<void> _requestRide() async {
-    if (isRequestingRide) return;
+    if (isRequestingRide) {
+      return;
+    }
 
     final session = Supabase.instance.client.auth.currentSession;
 
@@ -190,6 +293,7 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
           content: Text('Please sign in before requesting a ride.'),
         ),
       );
+
       return;
     }
 
@@ -199,6 +303,7 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
           content: Text('Please wait while RIMA calculates your route.'),
         ),
       );
+
       return;
     }
 
@@ -212,20 +317,26 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
         params: {
           'p_service_type': serviceTypes[selectedRide],
 
-          'p_pickup_latitude': widget.pickupPosition.latitude,
+          'p_pickup_latitude': pickupPosition.latitude,
 
-          'p_pickup_longitude': widget.pickupPosition.longitude,
+          'p_pickup_longitude': pickupPosition.longitude,
 
-          'p_pickup_label': 'Your current location',
+          //
+          // IMPORTANT:
+          // actual selected pickup label
+          //
+          'p_pickup_label': pickupLabel,
 
-          'p_destination_latitude': widget.destinationPosition.latitude,
+          'p_destination_latitude': destinationPosition.latitude,
 
-          'p_destination_longitude': widget.destinationPosition.longitude,
+          'p_destination_longitude': destinationPosition.longitude,
 
-          'p_destination_label': widget.destination,
+          'p_destination_label': destinationLabel,
 
           'p_pickup_area_id': null,
+
           'p_destination_area_id': null,
+
           'p_destination_landmark_id': null,
 
           'p_google_destination_place_id': null,
@@ -264,7 +375,7 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
           builder: (_) => RideSearchingScreen(
             rideId: rideId!,
             rideType: selectedRide,
-            destination: widget.destination,
+            destination: destinationLabel,
             fare: prices[selectedRide]!,
           ),
         ),
@@ -272,7 +383,10 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('RIMA ride created • ${rideId.substring(0, 8)}'),
+          content: Text(
+            'RIMA ride created • '
+            '${rideId.substring(0, 8)}',
+          ),
         ),
       );
     } on PostgrestException catch (e) {
@@ -306,61 +420,119 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDF7),
+
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+
         elevation: 0,
+
         title: const Text(
           'Choose your ride',
+
           style: TextStyle(
             color: RimaColors.primary,
+
             fontWeight: FontWeight.w800,
           ),
         ),
       ),
+
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
+
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
+
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+
                 children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF6ED),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_rounded,
-                          color: RimaColors.primary,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            widget.destination,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
+                  //
+                  // TRIP DETAILS HEADER
+                  //
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Trip details',
+
+                          style: TextStyle(
+                            fontSize: 22,
+
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+
+                      TextButton.icon(
+                        onPressed: isRequestingRide ? null : _changeTrip,
+
+                        icon: const Icon(Icons.edit_road_outlined, size: 18),
+
+                        label: const Text(
+                          'Change trip',
+
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  //
+                  // PICKUP
+                  //
+                  _tripLocationCard(
+                    icon: Icons.radio_button_checked_rounded,
+
+                    iconColor: RimaColors.primary,
+
+                    title: 'Pickup',
+
+                    value: pickupLabel,
+
+                    changeText: 'Change pickup',
+
+                    onChange: _changePickup,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  //
+                  // DESTINATION
+                  //
+                  _tripLocationCard(
+                    icon: Icons.location_on_rounded,
+
+                    iconColor: RimaColors.gold,
+
+                    title: 'Destination',
+
+                    value: destinationLabel,
+
+                    changeText: 'Change destination',
+
+                    onChange: _changeDestination,
                   ),
 
                   const SizedBox(height: 18),
 
+                  //
+                  // ROUTE SUMMARY
+                  //
                   _routeSummary(),
 
                   const SizedBox(height: 26),
 
+                  //
+                  // RIDE OPTIONS
+                  //
                   const Text(
                     'Ride options',
+
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                   ),
 
@@ -368,9 +540,13 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
                   _rideOption(
                     icon: Icons.directions_car_rounded,
+
                     title: 'RIMA Go',
+
                     subtitle: 'Affordable everyday ride',
+
                     eta: 'Pickup ETA later',
+
                     price: '250 MRU',
                   ),
 
@@ -378,9 +554,13 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
                   _rideOption(
                     icon: Icons.local_taxi_rounded,
+
                     title: 'RIMA Comfort',
+
                     subtitle: 'More comfort and space',
+
                     eta: 'Pickup ETA later',
+
                     price: '350 MRU',
                   ),
 
@@ -388,43 +568,64 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
                   _rideOption(
                     icon: Icons.airport_shuttle_rounded,
+
                     title: 'RIMA XL',
+
                     subtitle: 'For groups and more luggage',
+
                     eta: 'Pickup ETA later',
+
                     price: '450 MRU',
                   ),
 
                   const SizedBox(height: 30),
 
+                  //
+                  // ESTIMATED FARE
+                  //
                   Container(
                     width: double.infinity,
+
                     padding: const EdgeInsets.all(18),
+
                     decoration: BoxDecoration(
                       color: Colors.white,
+
                       borderRadius: BorderRadius.circular(20),
+
                       border: Border.all(color: Colors.black12),
                     ),
+
                     child: Row(
                       children: [
                         const Icon(
                           Icons.payments_outlined,
+
                           color: RimaColors.primary,
                         ),
+
                         const SizedBox(width: 12),
+
                         const Expanded(
                           child: Text(
                             'Estimated fare',
+
                             style: TextStyle(
                               fontSize: 16,
+
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
+
                         Text(
                           prices[selectedRide] ?? '',
+
                           style: const TextStyle(
                             fontSize: 18,
+
                             fontWeight: FontWeight.w900,
+
                             color: RimaColors.primary,
                           ),
                         ),
@@ -434,19 +635,31 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
                   const SizedBox(height: 18),
 
+                  //
+                  // REQUEST RIDE
+                  //
                   SizedBox(
                     width: double.infinity,
+
                     height: 58,
+
                     child: ElevatedButton(
-                      onPressed: isRequestingRide || isLoadingRoute
+                      onPressed:
+                          isRequestingRide ||
+                              isLoadingRoute ||
+                              routeError != null
                           ? null
                           : _requestRide,
+
                       child: isRequestingRide
                           ? const SizedBox(
                               width: 24,
+
                               height: 24,
+
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
+
                                 color: Colors.white,
                               ),
                             )
@@ -454,11 +667,34 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
                               isLoadingRoute
                                   ? 'Calculating route...'
                                   : 'Request $selectedRide',
+
                               style: const TextStyle(
                                 fontSize: 17,
+
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  //
+                  // SECOND CHANGE OPTION
+                  //
+                  SizedBox(
+                    width: double.infinity,
+
+                    child: TextButton.icon(
+                      onPressed: isRequestingRide ? null : _changeTrip,
+
+                      icon: const Icon(Icons.arrow_back_rounded),
+
+                      label: const Text(
+                        'Change trip details',
+
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
                 ],
@@ -470,30 +706,135 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
     );
   }
 
+  //
+  // TRIP LOCATION CARD
+  //
+  Widget _tripLocationCard({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String value,
+    required String changeText,
+    required VoidCallback onChange,
+  }) {
+    return Container(
+      width: double.infinity,
+
+      padding: const EdgeInsets.all(17),
+
+      decoration: BoxDecoration(
+        color: Colors.white,
+
+        borderRadius: BorderRadius.circular(20),
+
+        border: Border.all(color: Colors.black12),
+      ),
+
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+
+            decoration: BoxDecoration(
+              color: const Color(0xFFF6F6F2),
+
+              borderRadius: BorderRadius.circular(14),
+            ),
+
+            child: Icon(icon, color: iconColor),
+          ),
+
+          const SizedBox(width: 14),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+
+              children: [
+                Text(
+                  title,
+
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+
+                const SizedBox(height: 3),
+
+                Text(
+                  value,
+
+                  maxLines: 2,
+
+                  overflow: TextOverflow.ellipsis,
+
+                  style: const TextStyle(
+                    fontSize: 16,
+
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          TextButton(
+            onPressed: isRequestingRide ? null : onChange,
+
+            child: Text(
+              changeText,
+
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+
+                color: RimaColors.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  //
+  // ROUTE SUMMARY
+  //
   Widget _routeSummary() {
     if (isLoadingRoute) {
       return Container(
         width: double.infinity,
+
         padding: const EdgeInsets.all(18),
+
         decoration: BoxDecoration(
           color: Colors.white,
+
           borderRadius: BorderRadius.circular(20),
+
           border: Border.all(color: Colors.black12),
         ),
+
         child: const Row(
           children: [
             SizedBox(
               width: 22,
+
               height: 22,
+
               child: CircularProgressIndicator(
                 strokeWidth: 2,
+
                 color: RimaColors.primary,
               ),
             ),
+
             SizedBox(width: 14),
+
             Expanded(
               child: Text(
                 'Calculating driving route...',
+
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
@@ -505,16 +846,23 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
     if (routeError != null) {
       return Container(
         width: double.infinity,
+
         padding: const EdgeInsets.all(18),
+
         decoration: BoxDecoration(
           color: const Color(0xFFFFF3D6),
+
           borderRadius: BorderRadius.circular(20),
         ),
+
         child: Row(
           children: [
             const Icon(Icons.warning_amber_rounded, color: RimaColors.primary),
+
             const SizedBox(width: 12),
+
             Expanded(child: Text(routeError!)),
+
             TextButton(onPressed: _loadRoute, child: const Text('Retry')),
           ],
         ),
@@ -523,26 +871,37 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
     return Container(
       width: double.infinity,
+
       padding: const EdgeInsets.all(18),
+
       decoration: BoxDecoration(
         color: Colors.white,
+
         borderRadius: BorderRadius.circular(20),
+
         border: Border.all(color: Colors.black12),
       ),
+
       child: Row(
         children: [
           Expanded(
             child: _routeValue(
               icon: Icons.route_outlined,
+
               label: 'Trip distance',
+
               value: formattedDistance,
             ),
           ),
+
           Container(height: 45, width: 1, color: Colors.black12),
+
           Expanded(
             child: _routeValue(
               icon: Icons.schedule_outlined,
+
               label: 'Trip time',
+
               value: formattedDuration,
             ),
           ),
@@ -559,14 +918,20 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
     return Column(
       children: [
         Icon(icon, color: RimaColors.primary),
+
         const SizedBox(height: 6),
+
         Text(
           value,
+
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
         ),
+
         const SizedBox(height: 2),
+
         Text(
           label,
+
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ],
@@ -580,28 +945,37 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
     required String eta,
     required String price,
   }) {
-    final bool isSelected = selectedRide == title;
+    final isSelected = selectedRide == title;
 
     return Material(
       color: Colors.transparent,
+
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
+
         onTap: () {
           setState(() {
             selectedRide = title;
           });
         },
+
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
+
           padding: const EdgeInsets.all(18),
+
           decoration: BoxDecoration(
             color: isSelected ? const Color(0xFFFFF3D6) : Colors.white,
+
             borderRadius: BorderRadius.circular(20),
+
             border: Border.all(
               color: isSelected ? RimaColors.gold : Colors.black12,
+
               width: isSelected ? 2 : 1,
             ),
           ),
+
           child: Row(
             children: [
               Icon(icon, size: 40, color: RimaColors.primary),
@@ -611,17 +985,23 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
                     Text(
                       title,
+
                       style: const TextStyle(
                         fontSize: 17,
+
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+
                     const SizedBox(height: 3),
+
                     Text(
                       '$subtitle • $eta',
+
                       style: const TextStyle(color: Colors.black54),
                     ),
                   ],
@@ -630,21 +1010,28 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
+
                 children: [
                   Text(
                     price,
+
                     style: const TextStyle(
                       fontSize: 16,
+
                       fontWeight: FontWeight.w800,
+
                       color: RimaColors.primary,
                     ),
                   ),
 
                   if (isSelected) ...[
                     const SizedBox(height: 6),
+
                     const Icon(
                       Icons.check_circle_rounded,
+
                       size: 20,
+
                       color: RimaColors.primary,
                     ),
                   ],

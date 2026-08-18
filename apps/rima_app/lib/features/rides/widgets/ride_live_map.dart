@@ -7,10 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../app/theme/colors.dart';
 
-enum RideMapMode {
-  customer,
-  driver,
-}
+enum RideMapMode { customer, driver }
 
 class RideLiveMap extends StatefulWidget {
   const RideLiveMap({
@@ -58,6 +55,11 @@ class _RideLiveMapState extends State<RideLiveMap> {
   String? _loadedRideId;
   int _loadGeneration = 0;
 
+  // Changes whenever the active route leg changes.
+  // This prevents an older async route request from
+  // overwriting a newer route.
+  int _routeGeneration = 0;
+
   static const double _nearPickupThresholdMeters = 150.0;
 
   @override
@@ -75,13 +77,10 @@ class _RideLiveMapState extends State<RideLiveMap> {
   }
 
   @override
-  void didUpdateWidget(
-    covariant RideLiveMap oldWidget,
-  ) {
+  void didUpdateWidget(covariant RideLiveMap oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.rideId != widget.rideId ||
-        oldWidget.mode != widget.mode) {
+    if (oldWidget.rideId != widget.rideId || oldWidget.mode != widget.mode) {
       _resetMap();
       _loadMapState();
     }
@@ -90,12 +89,17 @@ class _RideLiveMapState extends State<RideLiveMap> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _mapController?.dispose();
+
+    // GoogleMap owns the platform map lifecycle.
+    // Do not manually dispose the controller.
+    _mapController = null;
+
     super.dispose();
   }
 
   void _resetMap() {
     _loadGeneration++;
+    _routeGeneration++;
 
     _loadedRideId = widget.rideId;
 
@@ -132,8 +136,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
   }
 
   bool get driverHeadingToPickup {
-    return rideStatus == 'driver_assigned' ||
-        rideStatus == 'driver_arriving';
+    return rideStatus == 'driver_assigned' || rideStatus == 'driver_arriving';
   }
 
   bool get driverArrived {
@@ -181,10 +184,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
       return '--';
     }
 
-    final minutes = math.max(
-      1,
-      (value / 60).ceil(),
-    );
+    final minutes = math.max(1, (value / 60).ceil());
 
     if (minutes < 60) {
       return '$minutes min';
@@ -211,9 +211,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
     try {
       final result = await Supabase.instance.client.rpc(
         'get_ride_map_state',
-        params: {
-          'p_ride_id': requestedRideId,
-        },
+        params: {'p_ride_id': requestedRideId},
       );
 
       if (!mounted ||
@@ -223,82 +221,61 @@ class _RideLiveMapState extends State<RideLiveMap> {
       }
 
       if (result is! List || result.isEmpty) {
-        throw Exception(
-          'Ride map data was not returned.',
-        );
+        throw Exception('Ride map data was not returned.');
       }
 
-      final row = Map<String, dynamic>.from(
-        result.first as Map,
-      );
+      final row = Map<String, dynamic>.from(result.first as Map);
 
-      final pickupLat =
-          _toDouble(row['pickup_latitude']);
+      final pickupLat = _toDouble(row['pickup_latitude']);
 
-      final pickupLng =
-          _toDouble(row['pickup_longitude']);
+      final pickupLng = _toDouble(row['pickup_longitude']);
 
-      final destinationLat =
-          _toDouble(row['destination_latitude']);
+      final destinationLat = _toDouble(row['destination_latitude']);
 
-      final destinationLng =
-          _toDouble(row['destination_longitude']);
+      final destinationLng = _toDouble(row['destination_longitude']);
 
-      final driverLat =
-          _toDouble(row['driver_latitude']);
+      final driverLat = _toDouble(row['driver_latitude']);
 
-      final driverLng =
-          _toDouble(row['driver_longitude']);
+      final driverLng = _toDouble(row['driver_longitude']);
+      if (widget.mode == RideMapMode.customer) {
+        debugPrint(
+          'RIMA CUSTOMER RECEIVED DRIVER GPS: '
+          '$driverLat, $driverLng',
+        );
+      }
 
       if (pickupLat == null ||
           pickupLng == null ||
           destinationLat == null ||
           destinationLng == null) {
-        throw Exception(
-          'Pickup or destination coordinates are missing.',
-        );
+        throw Exception('Pickup or destination coordinates are missing.');
       }
 
-      final newPickup = LatLng(
-        pickupLat,
-        pickupLng,
-      );
+      final newPickup = LatLng(pickupLat, pickupLng);
 
-      final newDestination = LatLng(
-        destinationLat,
-        destinationLng,
-      );
+      final newDestination = LatLng(destinationLat, destinationLng);
 
       LatLng? newDriver;
 
-      if (driverLat != null &&
-          driverLng != null) {
-        newDriver = LatLng(
-          driverLat,
-          driverLng,
-        );
+      if (driverLat != null && driverLng != null) {
+        newDriver = LatLng(driverLat, driverLng);
       }
 
       final previousOrigin = _routeOrigin;
-      final previousDestination =
-          _routeDestination;
+      final previousDestination = _routeDestination;
+      final previousStatus = rideStatus;
 
       setState(() {
-        rideStatus =
-            row['status']?.toString() ??
-                'searching';
+        rideStatus = row['status']?.toString() ?? 'searching';
 
         pickupPosition = newPickup;
         destinationPosition = newDestination;
         driverPosition = newDriver;
 
-        pickupLabel =
-            row['pickup_label']?.toString() ??
-                'Pickup';
+        pickupLabel = row['pickup_label']?.toString() ?? 'Pickup';
 
         destinationLabel =
-            row['destination_label']?.toString() ??
-                'Destination';
+            row['destination_label']?.toString() ?? 'Destination';
 
         markers = _buildMarkers();
 
@@ -307,20 +284,16 @@ class _RideLiveMapState extends State<RideLiveMap> {
       });
 
       final newOrigin = _routeOrigin;
-      final newRouteDestination =
-          _routeDestination;
+      final newRouteDestination = _routeDestination;
 
       final routeChanged =
-          !_sameNullablePosition(
-            previousOrigin,
-            newOrigin,
-          ) ||
-          !_sameNullablePosition(
-            previousDestination,
-            newRouteDestination,
-          );
+          previousStatus != rideStatus ||
+          !_sameNullablePosition(previousOrigin, newOrigin) ||
+          !_sameNullablePosition(previousDestination, newRouteDestination);
 
       if (routeChanged) {
+        _routeGeneration++;
+
         _lastRouteOrigin = null;
         _lastRouteDestination = null;
 
@@ -341,9 +314,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
     } on PostgrestException catch (e) {
       if (!mounted) return;
 
-      debugPrint(
-        'RIMA LIVE MAP RPC ERROR: ${e.message}',
-      );
+      debugPrint('RIMA LIVE MAP RPC ERROR: ${e.message}');
 
       setState(() {
         isLoading = false;
@@ -352,9 +323,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
     } catch (e) {
       if (!mounted) return;
 
-      debugPrint(
-        'RIMA LIVE MAP ERROR: $e',
-      );
+      debugPrint('RIMA LIVE MAP ERROR: $e');
 
       setState(() {
         isLoading = false;
@@ -370,20 +339,15 @@ class _RideLiveMapState extends State<RideLiveMap> {
     final destination = destinationPosition;
     final driver = driverPosition;
 
-    // CUSTOMER
     if (widget.mode == RideMapMode.customer) {
-      // DRIVER -> PICKUP
       if (driverHeadingToPickup) {
         if (driver != null) {
           result.add(
             Marker(
               markerId: const MarkerId('driver'),
               position: driver,
-              infoWindow: const InfoWindow(
-                title: 'Your RIMA Driver',
-              ),
-              icon:
-                  BitmapDescriptor.defaultMarkerWithHue(
+              infoWindow: const InfoWindow(title: 'Your RIMA Driver'),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueAzure,
               ),
             ),
@@ -399,8 +363,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
                 title: 'Your pickup',
                 snippet: pickupLabel,
               ),
-              icon:
-                  BitmapDescriptor.defaultMarkerWithHue(
+              icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueGreen,
               ),
             ),
@@ -410,19 +373,14 @@ class _RideLiveMapState extends State<RideLiveMap> {
         return result;
       }
 
-      // DRIVER ARRIVED
       if (driverArrived) {
         if (pickup != null) {
           result.add(
             Marker(
               markerId: const MarkerId('pickup'),
               position: pickup,
-              infoWindow: InfoWindow(
-                title: 'Pickup',
-                snippet: pickupLabel,
-              ),
-              icon:
-                  BitmapDescriptor.defaultMarkerWithHue(
+              infoWindow: InfoWindow(title: 'Pickup', snippet: pickupLabel),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueGreen,
               ),
             ),
@@ -432,15 +390,13 @@ class _RideLiveMapState extends State<RideLiveMap> {
         if (destination != null) {
           result.add(
             Marker(
-              markerId:
-                  const MarkerId('destination'),
+              markerId: const MarkerId('destination'),
               position: destination,
               infoWindow: InfoWindow(
                 title: 'Destination',
                 snippet: destinationLabel,
               ),
-              icon:
-                  BitmapDescriptor.defaultMarkerWithHue(
+              icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueRed,
               ),
             ),
@@ -452,11 +408,8 @@ class _RideLiveMapState extends State<RideLiveMap> {
             Marker(
               markerId: const MarkerId('driver'),
               position: driver,
-              infoWindow: const InfoWindow(
-                title: 'Your RIMA Driver',
-              ),
-              icon:
-                  BitmapDescriptor.defaultMarkerWithHue(
+              infoWindow: const InfoWindow(title: 'Your RIMA Driver'),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueAzure,
               ),
             ),
@@ -466,18 +419,14 @@ class _RideLiveMapState extends State<RideLiveMap> {
         return result;
       }
 
-      // IN PROGRESS
       if (rideInProgress) {
         if (driver != null) {
           result.add(
             Marker(
               markerId: const MarkerId('driver'),
               position: driver,
-              infoWindow: const InfoWindow(
-                title: 'Your RIMA Driver',
-              ),
-              icon:
-                  BitmapDescriptor.defaultMarkerWithHue(
+              infoWindow: const InfoWindow(title: 'Your RIMA Driver'),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueAzure,
               ),
             ),
@@ -487,15 +436,13 @@ class _RideLiveMapState extends State<RideLiveMap> {
         if (destination != null) {
           result.add(
             Marker(
-              markerId:
-                  const MarkerId('destination'),
+              markerId: const MarkerId('destination'),
               position: destination,
               infoWindow: InfoWindow(
                 title: 'Destination',
                 snippet: destinationLabel,
               ),
-              icon:
-                  BitmapDescriptor.defaultMarkerWithHue(
+              icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueRed,
               ),
             ),
@@ -505,18 +452,13 @@ class _RideLiveMapState extends State<RideLiveMap> {
         return result;
       }
 
-      // SEARCHING
       if (pickup != null) {
         result.add(
           Marker(
             markerId: const MarkerId('pickup'),
             position: pickup,
-            infoWindow: InfoWindow(
-              title: 'Pickup',
-              snippet: pickupLabel,
-            ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            infoWindow: InfoWindow(title: 'Pickup', snippet: pickupLabel),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueGreen,
             ),
           ),
@@ -526,15 +468,13 @@ class _RideLiveMapState extends State<RideLiveMap> {
       if (destination != null) {
         result.add(
           Marker(
-            markerId:
-                const MarkerId('destination'),
+            markerId: const MarkerId('destination'),
             position: destination,
             infoWindow: InfoWindow(
               title: 'Destination',
               snippet: destinationLabel,
             ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueRed,
             ),
           ),
@@ -544,18 +484,14 @@ class _RideLiveMapState extends State<RideLiveMap> {
       return result;
     }
 
-    // DRIVER
     if (driverHeadingToPickup) {
       if (driver != null) {
         result.add(
           Marker(
             markerId: const MarkerId('driver'),
             position: driver,
-            infoWindow: const InfoWindow(
-              title: 'RIMA Driver',
-            ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            infoWindow: const InfoWindow(title: 'RIMA Driver'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueAzure,
             ),
           ),
@@ -567,12 +503,8 @@ class _RideLiveMapState extends State<RideLiveMap> {
           Marker(
             markerId: const MarkerId('pickup'),
             position: pickup,
-            infoWindow: InfoWindow(
-              title: 'Pickup',
-              snippet: pickupLabel,
-            ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            infoWindow: InfoWindow(title: 'Pickup', snippet: pickupLabel),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueGreen,
             ),
           ),
@@ -588,12 +520,8 @@ class _RideLiveMapState extends State<RideLiveMap> {
           Marker(
             markerId: const MarkerId('pickup'),
             position: pickup,
-            infoWindow: InfoWindow(
-              title: 'Pickup',
-              snippet: pickupLabel,
-            ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            infoWindow: InfoWindow(title: 'Pickup', snippet: pickupLabel),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueGreen,
             ),
           ),
@@ -603,15 +531,13 @@ class _RideLiveMapState extends State<RideLiveMap> {
       if (destination != null) {
         result.add(
           Marker(
-            markerId:
-                const MarkerId('destination'),
+            markerId: const MarkerId('destination'),
             position: destination,
             infoWindow: InfoWindow(
               title: 'Destination',
               snippet: destinationLabel,
             ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueRed,
             ),
           ),
@@ -623,11 +549,8 @@ class _RideLiveMapState extends State<RideLiveMap> {
           Marker(
             markerId: const MarkerId('driver'),
             position: driver,
-            infoWindow: const InfoWindow(
-              title: 'RIMA Driver',
-            ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            infoWindow: const InfoWindow(title: 'RIMA Driver'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueAzure,
             ),
           ),
@@ -643,11 +566,8 @@ class _RideLiveMapState extends State<RideLiveMap> {
           Marker(
             markerId: const MarkerId('driver'),
             position: driver,
-            infoWindow: const InfoWindow(
-              title: 'RIMA Driver',
-            ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            infoWindow: const InfoWindow(title: 'RIMA Driver'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueAzure,
             ),
           ),
@@ -657,15 +577,13 @@ class _RideLiveMapState extends State<RideLiveMap> {
       if (destination != null) {
         result.add(
           Marker(
-            markerId:
-                const MarkerId('destination'),
+            markerId: const MarkerId('destination'),
             position: destination,
             infoWindow: InfoWindow(
               title: 'Destination',
               snippet: destinationLabel,
             ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(
+            icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueRed,
             ),
           ),
@@ -680,12 +598,8 @@ class _RideLiveMapState extends State<RideLiveMap> {
         Marker(
           markerId: const MarkerId('pickup'),
           position: pickup,
-          infoWindow: InfoWindow(
-            title: 'Pickup',
-            snippet: pickupLabel,
-          ),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(
+          infoWindow: InfoWindow(title: 'Pickup', snippet: pickupLabel),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
             BitmapDescriptor.hueGreen,
           ),
         ),
@@ -695,17 +609,13 @@ class _RideLiveMapState extends State<RideLiveMap> {
     if (destination != null) {
       result.add(
         Marker(
-          markerId:
-              const MarkerId('destination'),
+          markerId: const MarkerId('destination'),
           position: destination,
           infoWindow: InfoWindow(
             title: 'Destination',
             snippet: destinationLabel,
           ),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueRed,
-          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
       );
     }
@@ -717,7 +627,6 @@ class _RideLiveMapState extends State<RideLiveMap> {
     final pickup = pickupPosition;
     final driver = driverPosition;
 
-    // CUSTOMER
     if (widget.mode == RideMapMode.customer) {
       if (driverHeadingToPickup) {
         return driver ?? pickup;
@@ -734,7 +643,6 @@ class _RideLiveMapState extends State<RideLiveMap> {
       return pickup;
     }
 
-    // DRIVER
     if (driverHeadingToPickup) {
       return driver ?? pickup;
     }
@@ -754,7 +662,6 @@ class _RideLiveMapState extends State<RideLiveMap> {
     final pickup = pickupPosition;
     final destination = destinationPosition;
 
-    // CUSTOMER
     if (widget.mode == RideMapMode.customer) {
       if (driverHeadingToPickup) {
         return pickup;
@@ -763,7 +670,6 @@ class _RideLiveMapState extends State<RideLiveMap> {
       return destination;
     }
 
-    // DRIVER
     if (driverHeadingToPickup) {
       return pickup;
     }
@@ -783,64 +689,42 @@ class _RideLiveMapState extends State<RideLiveMap> {
       return false;
     }
 
-    final distance = _distanceBetweenMeters(
-      driver,
-      pickup,
-    );
+    final distance = _distanceBetweenMeters(driver, pickup);
 
-    return distance <=
-        _nearPickupThresholdMeters;
+    return distance <= _nearPickupThresholdMeters;
   }
 
   Future<void> _loadActiveRoute() async {
     final routeRideId = widget.rideId;
     final generation = _loadGeneration;
+    final routeGeneration = _routeGeneration;
 
     final routeOrigin = _routeOrigin;
-    final routeDestination =
-        _routeDestination;
+    final routeDestination = _routeDestination;
 
-    if (routeOrigin == null ||
-        routeDestination == null) {
+    if (routeOrigin == null || routeDestination == null) {
       return;
     }
 
-    //
-    // SPECIAL CASE:
-    //
-    // Driver is already very close to pickup.
-    //
-    // Do NOT ask Google Routes to create
-    // a large road loop.
-    //
     if (_shouldUseDirectPickupRoute) {
-      final distance =
-          _distanceBetweenMeters(
+      final distance = _distanceBetweenMeters(
         routeOrigin,
         routeDestination,
       ).round();
 
-      debugPrint(
-        'RIMA NEAR PICKUP: '
-        '$distance meters - using direct GPS route',
-      );
-
       _lastRouteOrigin = routeOrigin;
-      _lastRouteDestination =
-          routeDestination;
+      _lastRouteDestination = routeDestination;
 
       if (!mounted ||
           routeRideId != widget.rideId ||
-          generation != _loadGeneration) {
+          generation != _loadGeneration ||
+          routeGeneration != _routeGeneration) {
         return;
       }
 
       setState(() {
-        activeLegDistanceMeters =
-            distance;
+        activeLegDistanceMeters = distance;
 
-        // At very short distance just display
-        // approximately 1 minute.
         activeLegDurationSeconds = 60;
 
         polylines = {
@@ -848,14 +732,9 @@ class _RideLiveMapState extends State<RideLiveMap> {
             polylineId: PolylineId(
               'direct_${widget.mode.name}_${routeRideId}_$rideStatus',
             ),
-            points: [
-              routeOrigin,
-              routeDestination,
-            ],
+            points: [routeOrigin, routeDestination],
             width: 6,
-            color: const Color(
-              0xFF1A73E8,
-            ),
+            color: const Color(0xFF1A73E8),
             startCap: Cap.roundCap,
             endCap: Cap.roundCap,
             geodesic: true,
@@ -865,34 +744,23 @@ class _RideLiveMapState extends State<RideLiveMap> {
         isLoadingRoute = false;
       });
 
-      await _fitMapToRoute(
-        [
-          routeOrigin,
-          routeDestination,
-        ],
-      );
+      if (routeGeneration != _routeGeneration) {
+        return;
+      }
+
+      await _fitMapToRoute([routeOrigin, routeDestination]);
 
       return;
     }
 
-    //
-    // NORMAL GOOGLE ROUTE
-    //
-    if (_samePosition(
-          routeOrigin,
-          _lastRouteOrigin,
-        ) &&
-        _samePosition(
-          routeDestination,
-          _lastRouteDestination,
-        ) &&
+    if (_samePosition(routeOrigin, _lastRouteOrigin) &&
+        _samePosition(routeDestination, _lastRouteDestination) &&
         polylines.isNotEmpty) {
       return;
     }
 
     _lastRouteOrigin = routeOrigin;
-    _lastRouteDestination =
-        routeDestination;
+    _lastRouteDestination = routeDestination;
 
     if (mounted) {
       setState(() {
@@ -904,130 +772,67 @@ class _RideLiveMapState extends State<RideLiveMap> {
     }
 
     try {
-      debugPrint(
-        '=======================================',
-      );
-
-      debugPrint(
-        'RIMA MAP MODE: ${widget.mode.name}',
-      );
-
-      debugPrint(
-        'RIMA MAP STATUS: $rideStatus',
-      );
-
-      debugPrint(
-        'RIMA ROUTE RIDE ID: $routeRideId',
-      );
-
-      debugPrint(
-        'RIMA ROUTE ORIGIN: '
-        '${routeOrigin.latitude}, '
-        '${routeOrigin.longitude}',
-      );
-
-      debugPrint(
-        'RIMA ROUTE DESTINATION: '
-        '${routeDestination.latitude}, '
-        '${routeDestination.longitude}',
-      );
-
-      debugPrint(
-        '=======================================',
-      );
-
-      final response =
-          await Supabase.instance.client.functions.invoke(
+      final response = await Supabase.instance.client.functions.invoke(
         'calculate-route',
         body: {
           'pickup': {
-            'latitude':
-                routeOrigin.latitude,
-            'longitude':
-                routeOrigin.longitude,
+            'latitude': routeOrigin.latitude,
+            'longitude': routeOrigin.longitude,
           },
           'destination': {
-            'latitude':
-                routeDestination.latitude,
-            'longitude':
-                routeDestination.longitude,
+            'latitude': routeDestination.latitude,
+            'longitude': routeDestination.longitude,
           },
         },
       );
 
       if (!mounted ||
           routeRideId != widget.rideId ||
-          generation != _loadGeneration) {
+          generation != _loadGeneration ||
+          routeGeneration != _routeGeneration) {
         return;
       }
 
       final data = response.data;
 
-      if (data == null ||
-          data is! Map) {
-        throw Exception(
-          'Invalid route response.',
-        );
+      if (data == null || data is! Map) {
+        throw Exception('Invalid route response.');
       }
 
       if (data['error'] != null) {
-        throw Exception(
-          data['error'].toString(),
-        );
+        throw Exception(data['error'].toString());
       }
 
-      final rawDistance =
-          data['distance_meters'];
+      final rawDistance = data['distance_meters'];
 
-      final rawDuration =
-          data['duration_seconds'];
+      final rawDuration = data['duration_seconds'];
 
-      final parsedDistance =
-          rawDistance is int
-              ? rawDistance
-              : int.tryParse(
-                  rawDistance?.toString() ??
-                      '',
-                );
+      final parsedDistance = rawDistance is int
+          ? rawDistance
+          : int.tryParse(rawDistance?.toString() ?? '');
 
-      final parsedDuration =
-          rawDuration is int
-              ? rawDuration
-              : int.tryParse(
-                  rawDuration?.toString() ??
-                      '',
-                );
+      final parsedDuration = rawDuration is int
+          ? rawDuration
+          : int.tryParse(rawDuration?.toString() ?? '');
 
-      final rawRoutePoints =
-          data['route_points'];
+      final rawRoutePoints = data['route_points'];
 
-      if (rawRoutePoints is! List ||
-          rawRoutePoints.length < 2) {
-        throw Exception(
-          'Google Routes did not return usable route points.',
-        );
+      if (rawRoutePoints is! List || rawRoutePoints.length < 2) {
+        throw Exception('Google Routes did not return usable route points.');
       }
 
       final googlePoints = <LatLng>[];
 
-      for (final item
-          in rawRoutePoints) {
+      for (final item in rawRoutePoints) {
         if (item is! Map) {
           continue;
         }
 
-        final latitude =
-            _toDouble(
-          item['latitude'],
-        );
+        final latitude = _toDouble(item['latitude']);
 
-        final longitude =
-            _toDouble(
-          item['longitude'],
-        );
+        final longitude = _toDouble(item['longitude']);
 
-        if (latitude == null ||
-            longitude == null) {
+        if (latitude == null || longitude == null) {
           continue;
         }
 
@@ -1038,22 +843,14 @@ class _RideLiveMapState extends State<RideLiveMap> {
           continue;
         }
 
-        googlePoints.add(
-          LatLng(
-            latitude,
-            longitude,
-          ),
-        );
+        googlePoints.add(LatLng(latitude, longitude));
       }
 
       if (googlePoints.length < 2) {
-        throw Exception(
-          'Google route geometry was invalid.',
-        );
+        throw Exception('Google route geometry was invalid.');
       }
 
-      final connectedPoints =
-          <LatLng>[
+      final connectedPoints = <LatLng>[
         routeOrigin,
         ...googlePoints,
         routeDestination,
@@ -1061,16 +858,15 @@ class _RideLiveMapState extends State<RideLiveMap> {
 
       if (!mounted ||
           routeRideId != widget.rideId ||
-          generation != _loadGeneration) {
+          generation != _loadGeneration ||
+          routeGeneration != _routeGeneration) {
         return;
       }
 
       setState(() {
-        activeLegDistanceMeters =
-            parsedDistance;
+        activeLegDistanceMeters = parsedDistance;
 
-        activeLegDurationSeconds =
-            parsedDuration;
+        activeLegDurationSeconds = parsedDuration;
 
         polylines = {
           Polyline(
@@ -1079,9 +875,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
             ),
             points: connectedPoints,
             width: 6,
-            color: const Color(
-              0xFF1A73E8,
-            ),
+            color: const Color(0xFF1A73E8),
             startCap: Cap.roundCap,
             endCap: Cap.roundCap,
             jointType: JointType.round,
@@ -1092,16 +886,15 @@ class _RideLiveMapState extends State<RideLiveMap> {
         isLoadingRoute = false;
       });
 
-      await _fitMapToRoute(
-        connectedPoints,
-      );
+      if (routeGeneration != _routeGeneration) {
+        return;
+      }
+
+      await _fitMapToRoute(connectedPoints);
     } on FunctionException catch (e) {
       if (!mounted) return;
 
-      debugPrint(
-        'RIMA LIVE ROUTE FUNCTION ERROR: '
-        '${e.details}',
-      );
+      debugPrint('RIMA LIVE ROUTE FUNCTION ERROR: ${e.details}');
 
       setState(() {
         isLoadingRoute = false;
@@ -1110,9 +903,7 @@ class _RideLiveMapState extends State<RideLiveMap> {
     } catch (e) {
       if (!mounted) return;
 
-      debugPrint(
-        'RIMA LIVE ROUTE ERROR: $e',
-      );
+      debugPrint('RIMA LIVE ROUTE ERROR: $e');
 
       setState(() {
         isLoadingRoute = false;
@@ -1121,227 +912,161 @@ class _RideLiveMapState extends State<RideLiveMap> {
     }
   }
 
-  double _distanceBetweenMeters(
-    LatLng point1,
-    LatLng point2,
-  ) {
-    const earthRadiusMeters =
-        6371000.0;
+  double _distanceBetweenMeters(LatLng point1, LatLng point2) {
+    const earthRadiusMeters = 6371000.0;
 
-    final lat1 =
-        _degreesToRadians(
-      point1.latitude,
-    );
+    final lat1 = _degreesToRadians(point1.latitude);
 
-    final lat2 =
-        _degreesToRadians(
-      point2.latitude,
-    );
+    final lat2 = _degreesToRadians(point2.latitude);
 
-    final deltaLat =
-        _degreesToRadians(
-      point2.latitude -
-          point1.latitude,
-    );
+    final deltaLat = _degreesToRadians(point2.latitude - point1.latitude);
 
-    final deltaLng =
-        _degreesToRadians(
-      point2.longitude -
-          point1.longitude,
-    );
+    final deltaLng = _degreesToRadians(point2.longitude - point1.longitude);
 
     final a =
-        math.sin(deltaLat / 2) *
-                math.sin(deltaLat / 2) +
-            math.cos(lat1) *
-                math.cos(lat2) *
-                math.sin(deltaLng / 2) *
-                math.sin(deltaLng / 2);
+        math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(deltaLng / 2) *
+            math.sin(deltaLng / 2);
 
-    final c = 2 *
-        math.atan2(
-          math.sqrt(a),
-          math.sqrt(1 - a),
-        );
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
 
     return earthRadiusMeters * c;
   }
 
-  double _degreesToRadians(
-    double degrees,
-  ) {
-    return degrees *
-        math.pi /
-        180.0;
+  double _degreesToRadians(double degrees) {
+    return degrees * math.pi / 180.0;
   }
 
-  bool _sameNullablePosition(
-    LatLng? value,
-    LatLng? other,
-  ) {
-    if (value == null &&
-        other == null) {
+  bool _sameNullablePosition(LatLng? value, LatLng? other) {
+    if (value == null && other == null) {
       return true;
     }
 
-    if (value == null ||
-        other == null) {
+    if (value == null || other == null) {
       return false;
     }
 
-    return _samePosition(
-      value,
-      other,
-    );
+    return _samePosition(value, other);
   }
 
-  bool _samePosition(
-    LatLng value,
-    LatLng? other,
-  ) {
+  bool _samePosition(LatLng value, LatLng? other) {
     if (other == null) {
       return false;
     }
 
     const tolerance = 0.00001;
 
-    return (value.latitude -
-                    other.latitude)
-                .abs() <
-            tolerance &&
-        (value.longitude -
-                    other.longitude)
-                .abs() <
-            tolerance;
+    return (value.latitude - other.latitude).abs() < tolerance &&
+        (value.longitude - other.longitude).abs() < tolerance;
   }
 
-  Future<void>
-      _fitMapToActivePoints() async {
+  Future<void> _fitMapToActivePoints() async {
     final origin = _routeOrigin;
-    final destination =
-        _routeDestination;
+    final destination = _routeDestination;
 
-    if (origin == null ||
-        destination == null) {
+    if (origin == null || destination == null) {
       return;
     }
 
-    await _fitMapToPoints(
-      [
-        origin,
-        destination,
-      ],
-      padding: 70,
-    );
+    await _fitMapToPoints([origin, destination], padding: 140);
   }
 
-  Future<void> _fitMapToRoute(
-    List<LatLng> routePoints,
-  ) async {
+  Future<void> _fitMapToRoute(List<LatLng> routePoints) async {
     if (routePoints.isEmpty) {
       return;
     }
 
-    await _fitMapToPoints(
-      routePoints,
-      padding: 55,
-    );
+    await _fitMapToPoints(routePoints, padding: 140);
   }
 
   Future<void> _fitMapToPoints(
     List<LatLng> positions, {
     required double padding,
   }) async {
-    final controller =
-        _mapController;
+    final controller = _mapController;
 
-    if (controller == null ||
-        positions.isEmpty) {
+    if (controller == null || positions.isEmpty) {
       return;
     }
 
     if (positions.length == 1) {
       await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          positions.first,
-          16,
-        ),
+        CameraUpdate.newLatLngZoom(positions.first, 15),
       );
-
       return;
     }
 
-    double minLat =
-        positions.first.latitude;
+    double minLat = positions.first.latitude;
+    double maxLat = positions.first.latitude;
+    double minLng = positions.first.longitude;
+    double maxLng = positions.first.longitude;
 
-    double maxLat =
-        positions.first.latitude;
+    for (final point in positions.skip(1)) {
+      minLat = math.min(minLat, point.latitude);
+      maxLat = math.max(maxLat, point.latitude);
 
-    double minLng =
-        positions.first.longitude;
-
-    double maxLng =
-        positions.first.longitude;
-
-    for (final point
-        in positions.skip(1)) {
-      if (point.latitude < minLat) {
-        minLat = point.latitude;
-      }
-
-      if (point.latitude > maxLat) {
-        maxLat = point.latitude;
-      }
-
-      if (point.longitude < minLng) {
-        minLng = point.longitude;
-      }
-
-      if (point.longitude > maxLng) {
-        maxLng = point.longitude;
-      }
+      minLng = math.min(minLng, point.longitude);
+      maxLng = math.max(maxLng, point.longitude);
     }
 
-    if ((maxLat - minLat).abs() <
-            0.00001 &&
-        (maxLng - minLng).abs() <
-            0.00001) {
-      await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          positions.first,
-          16,
-        ),
-      );
+    //
+    // Add geographic breathing room around the route.
+    //
+    // This is especially important on Flutter Web where
+    // newLatLngBounds can otherwise place an endpoint too
+    // close to the edge of the Google Map.
+    //
+    final latSpan = math.max((maxLat - minLat).abs(), 0.002);
 
-      return;
-    }
+    final lngSpan = math.max((maxLng - minLng).abs(), 0.002);
+
+    final latMargin = latSpan * 0.18;
+    final lngMargin = lngSpan * 0.18;
+
+    final southwest = LatLng(minLat - latMargin, minLng - lngMargin);
+
+    final northeast = LatLng(maxLat + latMargin, maxLng + lngMargin);
 
     try {
+      if (controller != _mapController) {
+        return;
+      }
+
       await controller.animateCamera(
         CameraUpdate.newLatLngBounds(
-          LatLngBounds(
-            southwest: LatLng(
-              minLat,
-              minLng,
-            ),
-            northeast: LatLng(
-              maxLat,
-              maxLng,
-            ),
-          ),
-          padding,
+          LatLngBounds(southwest: southwest, northeast: northeast),
+          70,
+        ),
+      );
+
+      //
+      // Give the web map time to finish resizing,
+      // then fit the same bounds again.
+      //
+      await Future.delayed(const Duration(milliseconds: 350));
+
+      if (!mounted || controller != _mapController) {
+        return;
+      }
+
+      if (controller != _mapController) {
+        return;
+      }
+
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(southwest: southwest, northeast: northeast),
+          70,
         ),
       );
     } catch (e) {
-      debugPrint(
-        'RIMA MAP FIT ERROR: $e',
-      );
+      debugPrint('RIMA MAP FIT ERROR: $e');
     }
   }
 
-  static double? _toDouble(
-    dynamic value,
-  ) {
+  static double? _toDouble(dynamic value) {
     if (value == null) {
       return null;
     }
@@ -1358,22 +1083,23 @@ class _RideLiveMapState extends State<RideLiveMap> {
       return value.toDouble();
     }
 
-    return double.tryParse(
-      value.toString(),
-    );
+    return double.tryParse(value.toString());
+  }
+
+  String get _mapInstanceKey {
+    // Keep the same GoogleMap instance while the driver moves.
+    // Route/state updates are handled by markers, polylines,
+    // and _routeGeneration instead of recreating the platform map.
+    return 'rima-${widget.mode.name}-${widget.rideId}';
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     if (isLoading) {
       return SizedBox(
         height: widget.height,
         child: const Center(
-          child: CircularProgressIndicator(
-            color: RimaColors.primary,
-          ),
+          child: CircularProgressIndicator(color: RimaColors.primary),
         ),
       );
     }
@@ -1383,44 +1109,27 @@ class _RideLiveMapState extends State<RideLiveMap> {
         destinationPosition == null) {
       return Container(
         height: widget.height,
-        padding:
-            const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color:
-              const Color(0xFFFFF3D6),
-          borderRadius:
-              BorderRadius.circular(20),
+          color: const Color(0xFFFFF3D6),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Center(
           child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
                 Icons.map_outlined,
                 size: 44,
-                color:
-                    RimaColors.primary,
+                color: RimaColors.primary,
               ),
-              const SizedBox(
-                height: 10,
-              ),
+              const SizedBox(height: 10),
               Text(
-                loadError ??
-                    'Map unavailable.',
-                textAlign:
-                    TextAlign.center,
+                loadError ?? 'Map unavailable.',
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(
-                height: 12,
-              ),
-              TextButton(
-                onPressed:
-                    _loadMapState,
-                child: const Text(
-                  'Retry',
-                ),
-              ),
+              const SizedBox(height: 12),
+              TextButton(onPressed: _loadMapState, child: const Text('Retry')),
             ],
           ),
         ),
@@ -1430,89 +1139,59 @@ class _RideLiveMapState extends State<RideLiveMap> {
     return Column(
       children: [
         ClipRRect(
-          borderRadius:
-              BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(22),
           child: SizedBox(
             height: widget.height,
             width: double.infinity,
             child: GoogleMap(
-              key: ValueKey<String>(
-                'rima-${widget.mode.name}-map-${widget.rideId}',
-              ),
-              initialCameraPosition:
-                  CameraPosition(
-                target:
-                    _routeOrigin ??
-                        pickupPosition!,
+              key: ValueKey<String>(_mapInstanceKey),
+
+              initialCameraPosition: CameraPosition(
+                target: _routeOrigin ?? pickupPosition!,
                 zoom: 14,
               ),
-              onMapCreated:
-                  (controller) {
-                final oldController =
-                    _mapController;
 
-                if (oldController !=
-                        null &&
-                    oldController !=
-                        controller) {
-                  oldController.dispose();
-                }
+              onMapCreated: (controller) {
+                // Flutter's GoogleMap widget owns the platform map lifecycle.
+                // Keep only the latest controller reference.
+                _mapController = controller;
 
-                _mapController =
-                    controller;
+                final rideId = widget.rideId;
+                final mode = widget.mode;
+                final generation = _loadGeneration;
 
-                final rideId =
-                    widget.rideId;
-                final mode =
-                    widget.mode;
-                final generation =
-                    _loadGeneration;
+                Future.delayed(const Duration(milliseconds: 350), () async {
+                  if (!mounted ||
+                      rideId != widget.rideId ||
+                      mode != widget.mode ||
+                      generation != _loadGeneration ||
+                      _mapController != controller) {
+                    return;
+                  }
 
-                Future.delayed(
-                  const Duration(
-                    milliseconds: 350,
-                  ),
-                  () async {
-                    if (!mounted ||
-                        rideId !=
-                            widget.rideId ||
-                        mode !=
-                            widget.mode ||
-                        generation !=
-                            _loadGeneration ||
-                        _mapController !=
-                            controller) {
-                      return;
-                    }
-
-                    if (polylines
-                        .isNotEmpty) {
-                      await _fitMapToRoute(
-                        polylines
-                            .first
-                            .points,
-                      );
+                  try {
+                    if (polylines.isNotEmpty) {
+                      await _fitMapToRoute(polylines.first.points);
                     } else {
                       await _fitMapToActivePoints();
                     }
-                  },
-                );
+                  } catch (e) {
+                    debugPrint('RIMA MAP INITIAL FIT ERROR: $e');
+                  }
+                });
               },
+
               markers: markers,
               polylines: polylines,
+
               zoomControlsEnabled: false,
-              myLocationButtonEnabled:
-                  false,
+              myLocationButtonEnabled: false,
               compassEnabled: true,
               mapToolbarEnabled: false,
-              rotateGesturesEnabled:
-                  true,
-              scrollGesturesEnabled:
-                  true,
-              zoomGesturesEnabled:
-                  true,
-              tiltGesturesEnabled:
-                  true,
+              rotateGesturesEnabled: true,
+              scrollGesturesEnabled: true,
+              zoomGesturesEnabled: true,
+              tiltGesturesEnabled: true,
             ),
           ),
         ),
@@ -1521,68 +1200,48 @@ class _RideLiveMapState extends State<RideLiveMap> {
 
         Container(
           width: double.infinity,
-          padding:
-              const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius:
-                BorderRadius.circular(17),
-            border: Border.all(
-              color: Colors.black12,
-            ),
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: Colors.black12),
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.navigation_rounded,
-                color:
-                    RimaColors.primary,
-              ),
+              const Icon(Icons.navigation_rounded, color: RimaColors.primary),
 
               const SizedBox(width: 10),
 
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       activeLegTitle,
-                      style:
-                          const TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
-                        color:
-                            Colors.black54,
+                        color: Colors.black54,
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 2,
-                    ),
+                    const SizedBox(height: 2),
 
                     Text(
                       isLoadingRoute
                           ? 'Calculating route...'
                           : '$formattedActiveDistance • '
-                              '$formattedActiveDuration',
-                      style:
-                          const TextStyle(
+                                '$formattedActiveDuration',
+                      style: const TextStyle(
                         fontSize: 16,
-                        fontWeight:
-                            FontWeight.w800,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
                 ),
               ),
 
-              if (driverPosition !=
-                  null)
-                const Icon(
-                  Icons.local_taxi_rounded,
-                  color:
-                      RimaColors.primary,
-                ),
+              if (driverPosition != null)
+                const Icon(Icons.local_taxi_rounded, color: RimaColors.primary),
             ],
           ),
         ),

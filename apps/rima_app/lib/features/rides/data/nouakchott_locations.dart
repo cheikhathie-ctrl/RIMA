@@ -1,10 +1,6 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-enum RimaLocationType {
-  officialArea,
-  localArea,
-  pkArea,
-}
+enum RimaLocationType { officialArea, localArea, pkArea }
 
 class RimaArea {
   const RimaArea({
@@ -27,8 +23,10 @@ class RimaArea {
     switch (type) {
       case RimaLocationType.officialArea:
         return 'Major area';
+
       case RimaLocationType.localArea:
         return 'Local area';
+
       case RimaLocationType.pkArea:
         return 'PK area';
     }
@@ -39,6 +37,9 @@ class NouakchottLocations {
   NouakchottLocations._();
 
   static const List<RimaArea> areas = [
+    //
+    // MAJOR / OFFICIAL AREAS
+    //
     RimaArea(
       id: 'tevragh_zeina',
       name: 'Tevragh Zeina',
@@ -47,6 +48,7 @@ class NouakchottLocations {
       verified: true,
       aliases: ['Tevragh Zeïna', 'Tevragh Zein'],
     ),
+
     RimaArea(
       id: 'ksar',
       name: 'Ksar',
@@ -54,6 +56,7 @@ class NouakchottLocations {
       center: LatLng(18.1000, -15.9650),
       verified: true,
     ),
+
     RimaArea(
       id: 'arafat',
       name: 'Arafat',
@@ -61,6 +64,7 @@ class NouakchottLocations {
       center: LatLng(18.0350, -15.9500),
       verified: true,
     ),
+
     RimaArea(
       id: 'dar_naim',
       name: 'Dar Naim',
@@ -69,6 +73,7 @@ class NouakchottLocations {
       verified: true,
       aliases: ['Dar-Naim'],
     ),
+
     RimaArea(
       id: 'riyadh',
       name: 'Riyadh',
@@ -77,6 +82,7 @@ class NouakchottLocations {
       verified: true,
       aliases: ['Riad', 'Riyad'],
     ),
+
     RimaArea(
       id: 'teyarett',
       name: 'Teyarett',
@@ -84,6 +90,7 @@ class NouakchottLocations {
       center: LatLng(18.1200, -15.9650),
       verified: true,
     ),
+
     RimaArea(
       id: 'toujounine',
       name: 'Toujounine',
@@ -91,6 +98,7 @@ class NouakchottLocations {
       center: LatLng(18.0750, -15.8900),
       verified: true,
     ),
+
     RimaArea(
       id: 'sebkha',
       name: 'Sebkha',
@@ -98,6 +106,7 @@ class NouakchottLocations {
       center: LatLng(18.0650, -16.0150),
       verified: true,
     ),
+
     RimaArea(
       id: 'el_mina',
       name: 'El Mina',
@@ -106,7 +115,27 @@ class NouakchottLocations {
       verified: true,
     ),
 
-    // Local/common names
+    //
+    // LOCAL / COMMON NAMES
+    //
+    RimaArea(
+      id: 'cite_plage',
+      name: 'Cité Plage',
+      type: RimaLocationType.localArea,
+      center: LatLng(18.10309, -16.02479),
+      verified: false,
+      aliases: [
+        'Cite Plage',
+        'Cité plage',
+        'Cite plage',
+        'Plage',
+        'Beach',
+        'Port de pêche',
+        'Port du pêche',
+        'Fish Market',
+      ],
+    ),
+
     RimaArea(
       id: 'socogim',
       name: 'Socogim',
@@ -114,6 +143,7 @@ class NouakchottLocations {
       center: LatLng(18.0750, -15.9800),
       verified: false,
     ),
+
     RimaArea(
       id: 'sixieme',
       name: 'Sixième',
@@ -122,6 +152,7 @@ class NouakchottLocations {
       verified: false,
       aliases: ['6ème', 'Sixieme'],
     ),
+
     RimaArea(
       id: 'premier',
       name: 'Premier',
@@ -130,7 +161,9 @@ class NouakchottLocations {
       verified: false,
     ),
 
-    // PK areas
+    //
+    // PK AREAS
+    //
     RimaArea(
       id: 'pk_7',
       name: 'PK 7',
@@ -139,6 +172,7 @@ class NouakchottLocations {
       verified: false,
       aliases: ['PK7', 'PK-7'],
     ),
+
     RimaArea(
       id: 'pk_8',
       name: 'PK 8',
@@ -147,6 +181,7 @@ class NouakchottLocations {
       verified: false,
       aliases: ['PK8', 'PK-8'],
     ),
+
     RimaArea(
       id: 'pk_9',
       name: 'PK 9',
@@ -155,6 +190,7 @@ class NouakchottLocations {
       verified: false,
       aliases: ['PK9', 'PK-9'],
     ),
+
     RimaArea(
       id: 'pk_10',
       name: 'PK 10',
