@@ -49,6 +49,7 @@ class _RideSearchingScreenState
   String? driverName;
   String? driverAvatarUrl;
   double? driverRating;
+  int? driverRatingCount;
   int? driverCompletedRides;
 
   String? vehicleMake;
@@ -410,6 +411,8 @@ class _RideSearchingScreenState
             row['vehicle_plate']?.toString();
       });
 
+      await _loadDriverRatingSummary();
+
       debugPrint(
         'RIMA DRIVER DETAILS LOADED: '
         '${driverName ?? 'RIMA Driver'} | '
@@ -426,6 +429,59 @@ class _RideSearchingScreenState
     } catch (e) {
       debugPrint(
         'RIMA DRIVER DETAILS ERROR: $e',
+      );
+    }
+  }
+
+  Future<void> _loadDriverRatingSummary() async {
+    final driverId = assignedDriverId;
+
+    if (driverId == null || driverId.isEmpty) {
+      return;
+    }
+
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'get_driver_rating_summary',
+        params: {
+          'p_driver_id': driverId,
+        },
+      );
+
+      if (!mounted) return;
+
+      if (result is! List || result.isEmpty) {
+        setState(() {
+          driverRating = null;
+          driverRatingCount = 0;
+        });
+        return;
+      }
+
+      final row = Map<String, dynamic>.from(result.first as Map);
+
+      final rawAverage = row['average_rating'];
+      final rawCount = row['rating_count'];
+
+      final parsedAverage = rawAverage == null
+          ? null
+          : double.tryParse(rawAverage.toString());
+
+      final parsedCount = rawCount is int
+          ? rawCount
+          : int.tryParse(rawCount?.toString() ?? '') ?? 0;
+
+      setState(() {
+        driverRating = parsedCount > 0 ? parsedAverage : null;
+        driverRatingCount = parsedCount;
+      });
+    } on PostgrestException catch (e) {
+      debugPrint(
+        'RIMA DRIVER RATING SUMMARY RPC ERROR: ${e.message}',
+      );
+    } catch (e) {
+      debugPrint(
+        'RIMA DRIVER RATING SUMMARY ERROR: $e',
       );
     }
   }
@@ -1133,47 +1189,47 @@ class _RideSearchingScreenState
                       spacing: 5,
                       runSpacing: 3,
                       children: [
-                        if (driverRating !=
-                            null) ...[
+                        if (driverRating != null &&
+                            (driverRatingCount ?? 0) > 0) ...[
                           const Icon(
                             Icons.star_rounded,
                             size: 19,
-                            color:
-                                RimaColors.gold,
+                            color: RimaColors.gold,
                           ),
                           Text(
-                            driverRating!
-                                .toStringAsFixed(1),
-                            style:
-                                const TextStyle(
-                              fontWeight:
-                                  FontWeight.w700,
+                            driverRating!.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ],
-
-                        if (driverRating !=
-                                null &&
-                            driverCompletedRides !=
-                                null)
+                          Text(
+                            '(${driverRatingCount == 1 ? '1 rating' : '$driverRatingCount ratings'})',
+                            style: const TextStyle(
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ] else
+                          const Text(
+                            'New driver',
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        if (driverCompletedRides != null) ...[
                           const Text(
                             '•',
                             style: TextStyle(
-                              color:
-                                  Colors.black38,
+                              color: Colors.black38,
                             ),
                           ),
-
-                        if (driverCompletedRides !=
-                            null)
                           Text(
                             '$driverCompletedRides rides',
-                            style:
-                                const TextStyle(
-                              color:
-                                  Colors.black54,
+                            style: const TextStyle(
+                              color: Colors.black54,
                             ),
                           ),
+                        ],
                       ],
                     ),
                   ],
