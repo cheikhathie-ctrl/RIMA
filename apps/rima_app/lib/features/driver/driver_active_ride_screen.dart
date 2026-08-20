@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/colors.dart';
 import '../rides/widgets/ride_live_map.dart';
+import '../rides/ride_chat_screen.dart';
 import 'driver_available_rides_screen.dart';
 import 'services/driver_location_service.dart';
 
@@ -30,6 +31,8 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
   bool _invalidRideHandled = false;
 
   String? loadError;
+
+  int unreadMessageCount = 0;
 
   String rideStatus = 'driver_assigned';
 
@@ -63,13 +66,18 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
     // LOAD ACTIVE RIDE
     //
     _loadRide();
+    _loadUnreadMessageCount();
 
     //
     // REFRESH RIDE STATUS
     //
-    _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      _loadRide();
-    });
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) {
+        _loadRide();
+        _loadUnreadMessageCount();
+      },
+    );
   }
 
   @override
@@ -387,6 +395,37 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
         (route) => false,
       );
     });
+  }
+
+  Future<void> _loadUnreadMessageCount() async {
+    try {
+      final result =
+          await Supabase.instance.client.rpc(
+        'get_ride_unread_message_count',
+        params: {
+          'p_ride_id': widget.rideId,
+        },
+      );
+
+      if (!mounted) return;
+
+      final count = result is int
+          ? result
+          : int.tryParse(
+                result?.toString() ?? '',
+              ) ??
+              0;
+
+      if (count != unreadMessageCount) {
+        setState(() {
+          unreadMessageCount = count;
+        });
+      }
+    } catch (e) {
+      debugPrint(
+        'RIMA DRIVER UNREAD MESSAGE ERROR: $e',
+      );
+    }
   }
 
   Future<void> _updateRideStatus(String newStatus) async {
@@ -744,7 +783,11 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
 
           if (_activeStatuses.contains(rideStatus)) _statusTimeline(),
 
-          if (_activeStatuses.contains(rideStatus)) const SizedBox(height: 28),
+          if (_activeStatuses.contains(rideStatus)) ...[
+            const SizedBox(height: 18),
+            _driverRideActions(),
+            const SizedBox(height: 28),
+          ],
 
           if (_nextStatus != null)
             SizedBox(
@@ -799,6 +842,73 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
               message: 'Returning to available rides...',
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _driverRideActions() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RideChatScreen(
+                    rideId: widget.rideId,
+                    otherPartyLabel: 'customer',
+                  ),
+                ),
+              );
+
+              await _loadUnreadMessageCount();
+            },
+            child: Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.chat_bubble_outline_rounded,
+                ),
+                const SizedBox(width: 8),
+                const Text('Message customer'),
+                if (unreadMessageCount > 0) ...[
+                  const SizedBox(width: 8),
+                  _messageBadge(
+                    unreadMessageCount,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _messageBadge(int count) {
+    return Container(
+      constraints: const BoxConstraints(
+        minWidth: 22,
+        minHeight: 22,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 6,
+        vertical: 2,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.red,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }

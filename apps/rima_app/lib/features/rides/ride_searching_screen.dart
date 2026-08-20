@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/colors.dart';
 import '../home/home_screen.dart';
+import 'ride_chat_screen.dart';
 import 'widgets/ride_live_map.dart';
 
 class RideSearchingScreen extends StatefulWidget {
@@ -61,16 +62,20 @@ class _RideSearchingScreenState
 
   String? loadError;
 
+  int unreadMessageCount = 0;
+
   @override
   void initState() {
     super.initState();
 
     _loadRide();
+    _loadUnreadMessageCount();
 
     _pollTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) {
         _loadRide();
+        _loadUnreadMessageCount();
       },
     );
   }
@@ -406,6 +411,37 @@ class _RideSearchingScreenState
     } catch (e) {
       debugPrint(
         'RIMA DRIVER DETAILS ERROR: $e',
+      );
+    }
+  }
+
+  Future<void> _loadUnreadMessageCount() async {
+    try {
+      final result =
+          await Supabase.instance.client.rpc(
+        'get_ride_unread_message_count',
+        params: {
+          'p_ride_id': widget.rideId,
+        },
+      );
+
+      if (!mounted) return;
+
+      final count = result is int
+          ? result
+          : int.tryParse(
+                result?.toString() ?? '',
+              ) ??
+              0;
+
+      if (count != unreadMessageCount) {
+        setState(() {
+          unreadMessageCount = count;
+        });
+      }
+    } catch (e) {
+      debugPrint(
+        'RIMA CUSTOMER UNREAD MESSAGE ERROR: $e',
       );
     }
   }
@@ -767,6 +803,11 @@ class _RideSearchingScreenState
           if (driverAssigned) ...[
             const SizedBox(height: 24),
             _driverCard(),
+
+            if (!rideCancelled && !rideCompleted) ...[
+              const SizedBox(height: 14),
+              _customerRideActions(),
+            ],
           ],
 
           const SizedBox(height: 24),
@@ -812,6 +853,76 @@ class _RideSearchingScreenState
 
           const SizedBox(height: 25),
         ],
+      ),
+    );
+  }
+
+  Widget _customerRideActions() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RideChatScreen(
+                    rideId: widget.rideId,
+                    otherPartyLabel:
+                        driverName?.trim().isNotEmpty == true
+                            ? driverName!.trim()
+                            : 'your driver',
+                  ),
+                ),
+              );
+
+              await _loadUnreadMessageCount();
+            },
+            child: Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.chat_bubble_outline_rounded,
+                ),
+                const SizedBox(width: 8),
+                const Text('Message'),
+                if (unreadMessageCount > 0) ...[
+                  const SizedBox(width: 8),
+                  _messageBadge(
+                    unreadMessageCount,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _messageBadge(int count) {
+    return Container(
+      constraints: const BoxConstraints(
+        minWidth: 22,
+        minHeight: 22,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 6,
+        vertical: 2,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.red,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
