@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/colors.dart';
 import 'driver_active_ride_screen.dart';
+import '../rides/ride_history_screen.dart';
 
 class DriverAvailableRidesScreen extends StatefulWidget {
   const DriverAvailableRidesScreen({super.key});
@@ -346,6 +347,21 @@ class _DriverAvailableRidesScreenState
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Ride history',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const RideHistoryScreen(),
+                ),
+              );
+            },
+            icon: const Icon(
+              Icons.history_rounded,
+              color: RimaColors.primary,
+            ),
+          ),
           IconButton(
             onPressed: _loadAvailableRides,
             icon: const Icon(Icons.refresh_rounded, color: RimaColors.primary),

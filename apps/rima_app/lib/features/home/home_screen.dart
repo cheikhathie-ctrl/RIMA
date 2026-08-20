@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../app/theme/colors.dart';
 import '../rides/ride_booking_screen.dart';
 import '../rides/ride_searching_screen.dart';
+import '../rides/ride_history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -426,20 +427,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const SizedBox(height: 15),
 
-                  Container(
-                    width: double.infinity,
-
-                    padding: const EdgeInsets.all(20),
-
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const RideHistoryScreen(),
+                          ),
+                        );
+                      },
                       borderRadius: BorderRadius.circular(22),
-
-                      border: Border.all(color: Colors.black12),
-                    ),
-
-                    child: const Row(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: const Row(
                       children: [
                         Icon(
                           Icons.history_rounded,
@@ -477,6 +485,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.black45,
                         ),
                       ],
+                        ),
+                      ),
                     ),
                   ),
 
@@ -490,6 +500,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       bottomNavigationBar: NavigationBar(
         selectedIndex: 0,
+        onDestinationSelected: (index) {
+          if (index == 1) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const RideHistoryScreen(),
+              ),
+            );
+          }
+        },
 
         destinations: const [
           NavigationDestination(
