@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/colors.dart';
 
@@ -268,36 +269,235 @@ class RideSafetyScreen extends StatelessWidget {
   }
 
   void _showReportSheet(BuildContext context) {
+    String selectedCategory = 'unsafe_driving';
+    final descriptionController = TextEditingController();
+    bool submitting = false;
+    String? formError;
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 4, 22, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.report_gmailerrorred_rounded, size: 42, color: RimaColors.primary),
-              const SizedBox(height: 10),
-              const Text('Report a safety issue', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 10),
-              const Text(
-                'The Safety Center interface is ready. Next we will connect reports to RIMA support and store them securely.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black54, height: 1.4),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  child: const Text('Close'),
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> submitReport() async {
+              final description = descriptionController.text.trim();
+
+              if (description.length < 3) {
+                setSheetState(() {
+                  formError = 'Please describe what happened.';
+                });
+                return;
+              }
+
+              setSheetState(() {
+                submitting = true;
+                formError = null;
+              });
+
+              try {
+                await Supabase.instance.client.rpc(
+                  'create_ride_safety_report',
+                  params: {
+                    'p_ride_id': rideId,
+                    'p_category': selectedCategory,
+                    'p_description': description,
+                  },
+                );
+
+                if (!sheetContext.mounted) return;
+                Navigator.pop(sheetContext);
+
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Safety report submitted to RIMA.',
+                    ),
+                  ),
+                );
+              } catch (e) {
+                if (!sheetContext.mounted) return;
+                setSheetState(() {
+                  submitting = false;
+                  formError =
+                      'Unable to submit the report. Please try again.';
+                });
+                debugPrint(
+                  'RIMA SAFETY REPORT ERROR: $e',
+                );
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  22,
+                  4,
+                  22,
+                  24 + MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(
+                        child: Icon(
+                          Icons.report_gmailerrorred_rounded,
+                          size: 42,
+                          color: RimaColors.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Center(
+                        child: Text(
+                          'Report a safety issue',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Center(
+                        child: Text(
+                          'Your report will be securely linked to this ride.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.black54,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'What happened?',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedCategory,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'unsafe_driving',
+                            child: Text('Unsafe driving'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'harassment',
+                            child: Text('Harassment'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'threat_or_violence',
+                            child: Text('Threat or violence'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'vehicle_issue',
+                            child: Text('Vehicle issue'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'route_or_location',
+                            child: Text('Route or location concern'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'other',
+                            child: Text('Other'),
+                          ),
+                        ],
+                        onChanged: submitting
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+                                setSheetState(() {
+                                  selectedCategory = value;
+                                });
+                              },
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Describe the issue',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: descriptionController,
+                        enabled: !submitting,
+                        minLines: 4,
+                        maxLines: 7,
+                        maxLength: 2000,
+                        textCapitalization:
+                            TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText:
+                              'Tell RIMA what happened during this ride...',
+                          alignLabelWithHint: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                      if (formError != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          formError!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              submitting ? null : submitReport,
+                          icon: submitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.shield_outlined,
+                                ),
+                          label: Text(
+                            submitting
+                                ? 'Submitting...'
+                                : 'Submit report',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton(
+                          onPressed: submitting
+                              ? null
+                              : () => Navigator.pop(sheetContext),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
+            );
+          },
+        );
+      },
+    ).whenComplete(descriptionController.dispose);
   }
+
 }
