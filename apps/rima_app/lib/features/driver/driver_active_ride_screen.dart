@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/colors.dart';
 import '../rides/widgets/ride_live_map.dart';
@@ -847,39 +848,125 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
     );
   }
 
-  Widget _driverRideActions() {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton(
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => RideChatScreen(
-                    rideId: widget.rideId,
-                    otherPartyLabel: 'customer',
-                  ),
-                ),
-              );
-              await _loadUnreadMessageCount();
-            },
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.chat_bubble_outline_rounded),
-                const SizedBox(width: 7),
-                const Text('Message'),
-                if (unreadMessageCount > 0) ...[
-                  const SizedBox(width: 7),
-                  _messageBadge(unreadMessageCount),
-                ],
-              ],
-            ),
+
+  Future<void> _callRideContact() async {
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'get_ride_call_contact',
+        params: {
+          'p_ride_id': widget.rideId,
+        },
+      );
+
+      if (!mounted) return;
+
+      if (result is! List || result.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No phone number is available for this ride.'),
           ),
+        );
+        return;
+      }
+
+      final row = Map<String, dynamic>.from(result.first as Map);
+      final phone = row['phone']?.toString().trim() ?? '';
+
+      if (phone.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No phone number is available for this ride.'),
+          ),
+        );
+        return;
+      }
+
+      final uri = Uri(
+        scheme: 'tel',
+        path: phone,
+      );
+
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open the phone dialer.'),
+          ),
+        );
+      }
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+
+      debugPrint('RIMA CALL CONTACT ERROR: ${e.message}');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to call: ${e.message}'),
         ),
-        const SizedBox(width: 10),
-        Expanded(
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      debugPrint('RIMA CALL ERROR: $e');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open the phone dialer.'),
+        ),
+      );
+    }
+  }
+
+  Widget _driverRideActions() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RideChatScreen(
+                        rideId: widget.rideId,
+                        otherPartyLabel: 'customer',
+                      ),
+                    ),
+                  );
+                  await _loadUnreadMessageCount();
+                },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.chat_bubble_outline_rounded),
+                    const SizedBox(width: 7),
+                    const Text('Message'),
+                    if (unreadMessageCount > 0) ...[
+                      const SizedBox(width: 7),
+                      _messageBadge(unreadMessageCount),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _callRideContact,
+                icon: const Icon(Icons.phone_outlined),
+                label: const Text('Call'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: () {
               Navigator.push(
