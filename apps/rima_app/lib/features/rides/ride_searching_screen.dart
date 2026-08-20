@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../app/theme/colors.dart';
 import '../home/home_screen.dart';
 import 'ride_chat_screen.dart';
+import '../safety/ride_safety_screen.dart';
 import 'widgets/ride_live_map.dart';
 
 class RideSearchingScreen extends StatefulWidget {
@@ -868,33 +869,50 @@ class _RideSearchingScreenState
                 MaterialPageRoute(
                   builder: (_) => RideChatScreen(
                     rideId: widget.rideId,
-                    otherPartyLabel:
-                        driverName?.trim().isNotEmpty == true
-                            ? driverName!.trim()
-                            : 'your driver',
+                    otherPartyLabel: driverName?.trim().isNotEmpty == true
+                        ? driverName!.trim()
+                        : 'your driver',
                   ),
                 ),
               );
-
               await _loadUnreadMessageCount();
             },
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.chat_bubble_outline_rounded,
-                ),
-                const SizedBox(width: 8),
+                const Icon(Icons.chat_bubble_outline_rounded),
+                const SizedBox(width: 7),
                 const Text('Message'),
                 if (unreadMessageCount > 0) ...[
-                  const SizedBox(width: 8),
-                  _messageBadge(
-                    unreadMessageCount,
-                  ),
+                  const SizedBox(width: 7),
+                  _messageBadge(unreadMessageCount),
                 ],
               ],
             ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RideSafetyScreen(
+                    rideId: widget.rideId,
+                    role: RideSafetyRole.customer,
+                    otherPartyName: driverName?.trim().isNotEmpty == true
+                        ? driverName!.trim()
+                        : 'RIMA Driver',
+                    pickupLabel: 'Pickup location',
+                    destinationLabel: widget.destination,
+                    rideStatus: rideStatus,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.shield_outlined),
+            label: const Text('Safety'),
           ),
         ),
       ],
