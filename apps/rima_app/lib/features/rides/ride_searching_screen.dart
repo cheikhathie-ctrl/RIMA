@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/theme/colors.dart';
 import '../home/home_screen.dart';
 import 'ride_chat_screen.dart';
+import 'ride_rating_screen.dart';
 import '../safety/ride_safety_screen.dart';
 import 'widgets/ride_live_map.dart';
 
@@ -273,21 +274,33 @@ class _RideSearchingScreenState
 
     _completionHandled = true;
 
-    Future.delayed(
-      const Duration(seconds: 2),
-      () {
-        if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
 
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                const HomeScreen(),
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RideRatingScreen(
+            rideId: widget.rideId,
+            role: RideRatingRole.customer,
+            otherPartyName:
+                driverName?.trim().isNotEmpty == true
+                    ? driverName!.trim()
+                    : 'your driver',
           ),
-          (route) => false,
-        );
-      },
-    );
+        ),
+      );
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const HomeScreen(),
+        ),
+        (route) => false,
+      );
+    });
   }
 
   void _handleCancelledRide() {
@@ -594,7 +607,7 @@ class _RideSearchingScreenState
         return 'You are on your way to your destination.';
 
       case 'completed':
-        return 'Thank you for riding with RIMA. Returning home...';
+        return 'Thank you for riding with RIMA. Please rate your driver.';
 
       case 'cancelled':
         return 'This ride has been cancelled. Returning home...';

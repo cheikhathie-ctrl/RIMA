@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/theme/colors.dart';
 import '../rides/widgets/ride_live_map.dart';
 import '../rides/ride_chat_screen.dart';
+import '../rides/ride_rating_screen.dart';
 import '../safety/ride_safety_screen.dart';
 import 'driver_available_rides_screen.dart';
 import 'services/driver_location_service.dart';
@@ -370,12 +371,27 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
 
     _completionHandled = true;
 
-    Future.delayed(const Duration(seconds: 2), () {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RideRatingScreen(
+            rideId: widget.rideId,
+            role: RideRatingRole.driver,
+            otherPartyName: 'your customer',
+          ),
+        ),
+      );
+
       if (!mounted) return;
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const DriverAvailableRidesScreen()),
+        MaterialPageRoute(
+          builder: (_) => const DriverAvailableRidesScreen(),
+        ),
         (route) => false,
       );
     });
@@ -832,7 +848,7 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
 
               title: 'Ride completed successfully',
 
-              message: 'Returning to available rides...',
+              message: 'Please rate your customer.',
             ),
 
           if (rideStatus == 'cancelled')
