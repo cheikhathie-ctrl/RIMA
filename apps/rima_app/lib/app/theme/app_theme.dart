@@ -13,11 +13,17 @@ class RimaTheme {
         primary: RimaColors.primary,
       ),
 
-      appBarTheme: const AppBarTheme(
-        backgroundColor: RimaColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
+     appBarTheme: const AppBarTheme(
+  backgroundColor: Colors.transparent,
+  foregroundColor: RimaColors.primary,
+  iconTheme: IconThemeData(
+    color: RimaColors.primary,
+  ),
+  actionsIconTheme: IconThemeData(
+    color: RimaColors.primary,
+  ),
+  elevation: 0,
+),
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

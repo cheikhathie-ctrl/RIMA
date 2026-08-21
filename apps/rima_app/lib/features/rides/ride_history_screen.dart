@@ -98,9 +98,10 @@ class _RideHistoryScreenState extends State<RideHistoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDF7),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
+  backgroundColor: Colors.transparent,
+  foregroundColor: RimaColors.primary,
+  elevation: 0,
+  title: const Text(
           'Ride history',
           style: TextStyle(
             color: RimaColors.primary,
@@ -335,13 +336,64 @@ class _RideHistoryScreenState extends State<RideHistoryScreen> {
   }
 }
 
-class RideReceiptScreen extends StatelessWidget {
+class RideReceiptScreen extends StatefulWidget {
   const RideReceiptScreen({
     super.key,
     required this.ride,
   });
 
   final Map<String, dynamic> ride;
+
+  @override
+  State<RideReceiptScreen> createState() => _RideReceiptScreenState();
+}
+
+class _RideReceiptScreenState extends State<RideReceiptScreen> {
+  bool isLoadingPayment = true;
+  Map<String, dynamic>? payment;
+
+  Map<String, dynamic> get ride => widget.ride;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPayment();
+  }
+
+  Future<void> _loadPayment() async {
+    final rideId = ride['ride_id']?.toString();
+
+    if (rideId == null || rideId.isEmpty) {
+      if (!mounted) return;
+      setState(() => isLoadingPayment = false);
+      return;
+    }
+
+    try {
+      final data = await Supabase.instance.client.rpc(
+        'get_ride_payment',
+        params: {'p_ride_id': rideId},
+      );
+
+      if (!mounted) return;
+
+      final rows = List<Map<String, dynamic>>.from(data as List);
+
+      setState(() {
+        payment = rows.isEmpty ? null : rows.first;
+        isLoadingPayment = false;
+      });
+    } catch (e) {
+      debugPrint('RIMA RECEIPT PAYMENT ERROR: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        payment = null;
+        isLoadingPayment = false;
+      });
+    }
+  }
 
   String _value(dynamic value, {String fallback = '--'}) {
     final text = value?.toString().trim() ?? '';
@@ -358,9 +410,72 @@ class RideReceiptScreen extends StatelessWidget {
         : '${parsed.toStringAsFixed(2)} MRU';
   }
 
+  String _paymentAmount() {
+    final value = payment?['amount_mru'];
+    if (value == null) return _fare();
+
+    final parsed = double.tryParse(value.toString());
+    if (parsed == null) return '${value.toString()} MRU';
+
+    return parsed == parsed.roundToDouble()
+        ? '${parsed.toStringAsFixed(0)} MRU'
+        : '${parsed.toStringAsFixed(2)} MRU';
+  }
+
+  String _paymentMethod() {
+    final raw = payment?['payment_method']?.toString().toLowerCase();
+
+    switch (raw) {
+      case 'bankily':
+        return 'Bankily';
+      case 'masrivi':
+        return 'Masrivi';
+      case 'sedad':
+        return 'Sedad';
+      case 'bimbank':
+        return 'BIMBANK';
+      case 'click':
+        return 'Click';
+      case 'mauripay':
+        return 'MauriPay';
+      case 'bmi':
+        return 'BMI';
+      default:
+        return '—';
+    }
+  }
+
+  String _paymentStatus() {
+    if (payment == null) return 'Not configured';
+
+    final raw = payment?['payment_status']?.toString() ?? '';
+
+    switch (raw) {
+      case 'not_started':
+        return 'Not started';
+      case 'pending':
+        return 'Pending';
+      case 'authorized':
+        return 'Authorized';
+      case 'processing':
+        return 'Processing';
+      case 'paid':
+        return 'Paid';
+      case 'failed':
+        return 'Failed';
+      case 'cancelled':
+        return 'Cancelled';
+      case 'refunded':
+        return 'Refunded';
+      default:
+        return raw.isEmpty ? 'Not configured' : raw;
+    }
+  }
+
   String _distance() {
     final value = ride['distance_meters'];
-    final meters = value is int ? value : int.tryParse(value?.toString() ?? '');
+    final meters =
+        value is int ? value : int.tryParse(value?.toString() ?? '');
     if (meters == null) return '--';
     return meters < 1000
         ? '$meters m'
@@ -369,7 +484,8 @@ class RideReceiptScreen extends StatelessWidget {
 
   String _duration() {
     final value = ride['estimated_duration_seconds'];
-    final seconds = value is int ? value : int.tryParse(value?.toString() ?? '');
+    final seconds =
+        value is int ? value : int.tryParse(value?.toString() ?? '');
     if (seconds == null) return '--';
     final minutes = (seconds / 60).ceil();
     if (minutes < 60) return '$minutes min';
@@ -382,12 +498,25 @@ class RideReceiptScreen extends StatelessWidget {
     if (raw == null) return '--';
     final dt = DateTime.tryParse(raw.toString())?.toLocal();
     if (dt == null) return '--';
+
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
+
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
+
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year} • $hour:$minute';
   }
 
@@ -404,9 +533,10 @@ class RideReceiptScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDF7),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
+  backgroundColor: Colors.transparent,
+  foregroundColor: RimaColors.primary,
+  elevation: 0,
+  title: const Text(
           'Ride receipt',
           style: TextStyle(
             color: RimaColors.primary,
@@ -433,8 +563,10 @@ class RideReceiptScreen extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        const Icon(
-                          Icons.check_circle_rounded,
+                        Icon(
+                          status == 'completed'
+                              ? Icons.check_circle_rounded
+                              : Icons.cancel_rounded,
                           size: 52,
                           color: RimaColors.primary,
                         ),
@@ -496,6 +628,8 @@ class RideReceiptScreen extends StatelessWidget {
                         _row('Plate', plate),
                     ],
                   ),
+                  const SizedBox(height: 14),
+                  _paymentSection(),
                   if (rating != null) ...[
                     const SizedBox(height: 14),
                     _section(
@@ -513,6 +647,57 @@ class RideReceiptScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _paymentSection() {
+    if (isLoadingPayment) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.black12),
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Payment',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: RimaColors.primary,
+              ),
+            ),
+            SizedBox(height: 14),
+            Center(
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: RimaColors.primary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final transaction =
+        _value(payment?['provider_transaction_id'], fallback: '');
+    final paidAt = payment?['paid_at'];
+
+    return _section(
+      'Payment',
+      [
+        _row('Status', _paymentStatus()),
+        _row('Method', _paymentMethod()),
+        _row('Amount', _paymentAmount()),
+        if (transaction.isNotEmpty)
+          _row('Transaction', transaction),
+        if (paidAt != null)
+          _row('Paid', _dateTime(paidAt)),
+      ],
     );
   }
 

@@ -35,6 +35,9 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
   bool isRequestingRide = false;
   bool isLoadingRoute = true;
+  bool isLoadingPaymentProviders = true;
+
+  List<Map<String, dynamic>> paymentProviders = [];
 
   int? distanceMeters;
   int? durationSeconds;
@@ -81,6 +84,27 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
     destinationLabel = widget.destination;
 
     _loadRoute();
+    _loadPaymentProviders();
+  }
+
+  Future<void> _loadPaymentProviders() async {
+    try {
+      final data = await Supabase.instance.client.rpc(
+        'get_available_payment_providers',
+      );
+      if (!mounted) return;
+      setState(() {
+        paymentProviders = List<Map<String, dynamic>>.from(data as List);
+        isLoadingPaymentProviders = false;
+      });
+    } catch (e) {
+      debugPrint('RIMA PAYMENT PROVIDERS ERROR: $e');
+      if (!mounted) return;
+      setState(() {
+        paymentProviders = [];
+        isLoadingPaymentProviders = false;
+      });
+    }
   }
 
   //
@@ -635,6 +659,10 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
 
                   const SizedBox(height: 18),
 
+                  _paymentMethodsCard(),
+
+                  const SizedBox(height: 18),
+
                   //
                   // REQUEST RIDE
                   //
@@ -702,6 +730,99 @@ class _RideOptionsScreenState extends State<RideOptionsScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _paymentMethodsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.account_balance_wallet_outlined,
+                  color: RimaColors.primary),
+              SizedBox(width: 10),
+              Text('Payment',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Digital payments will be enabled before RIMA launches.',
+            style: TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+          const SizedBox(height: 14),
+          if (isLoadingPaymentProviders)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: RimaColors.primary),
+              ),
+            )
+          else if (paymentProviders.isEmpty)
+            const Text(
+              'Payment methods are being prepared.',
+              style: TextStyle(
+                  color: Colors.black54, fontWeight: FontWeight.w600),
+            )
+          else
+            ...paymentProviders.map((provider) {
+              final name =
+                  provider['display_name']?.toString() ?? 'Payment provider';
+              final enabled = provider['is_enabled'] == true;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8F8F5),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance_rounded,
+                          size: 21, color: RimaColors.primary),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Text(name,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: enabled
+                              ? const Color(0xFFEAF6ED)
+                              : const Color(0xFFFFF3D6),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          enabled ? 'Available' : 'Coming soon',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: RimaColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
