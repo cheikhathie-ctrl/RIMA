@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "523581261338",
+    "project_id": "rima-1a800",
+    "storage_bucket": "rima-1a800.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:523581261338:android:4fbb5e1914dfaeeb16f3a3",
+        "android_client_info": {
+          "package_name": "mr.rima.rima_customer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDneCw-DJV5rSQjo78C5c7SvzLXSQW-4yk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
